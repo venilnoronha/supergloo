@@ -25,7 +25,18 @@ type MeshRoutingSyncer struct {
 	Reporter                  reporter.Reporter
 }
 
+func sanitizeName(name string) string {
+	name = strings.Replace(name, ".", "-", -1)
+	name = strings.Replace(name, "map[", "", -1)
+	name = strings.Replace(name, "]", "", -1)
+	name = strings.Replace(name, ":", "-", -1)
+	name = strings.Replace(name, " ", "-", -1)
+	name = strings.Replace(name, "\n", "", -1)
+	return name
+}
+
 func updateMetadataForWriting(meta *core.Metadata, writeNamespace string, writeSelector map[string]string) {
+	meta.Name = sanitizeName(meta.Name)
 	meta.Namespace = writeNamespace
 	if meta.Annotations == nil {
 		meta.Annotations = make(map[string]string)
@@ -88,8 +99,8 @@ func getIstioMeshForRule(rule *v1.RoutingRule, meshes v1.MeshList) (*v1.Istio, e
 	return istioMesh.Istio, nil
 }
 
-func subsetName(host string, labels map[string]string) string {
-	return fmt.Sprintf("%v-%+v", host, labels)
+func subsetName(labels map[string]string) string {
+	return sanitizeName(fmt.Sprintf("%+v", labels))
 }
 
 // destinationrules
@@ -134,7 +145,7 @@ func destinationRulesForUpstreams(rules v1.RoutingRuleList, meshes v1.MeshList, 
 			var subsets []*v1alpha3.Subset
 			for _, labels := range labelSets {
 				subsets = append(subsets, &v1alpha3.Subset{
-					Name:   subsetName(host, labels),
+					Name:   subsetName(labels),
 					Labels: labels,
 				})
 			}
@@ -367,7 +378,7 @@ func createIstioDestinations(orinalHost string, originalLabels map[string]string
 		return []*v1alpha3.HTTPRouteDestination{{
 			Destination: &v1alpha3.Destination{
 				Host:   orinalHost,
-				Subset: subsetName(orinalHost, originalLabels),
+				Subset: subsetName(originalLabels),
 			},
 		}}, nil
 	}
@@ -395,7 +406,7 @@ func createIstioDestinations(orinalHost string, originalLabels map[string]string
 		istioDestinations = append(istioDestinations, &v1alpha3.HTTPRouteDestination{
 			Destination: &v1alpha3.Destination{
 				Host:   host,
-				Subset: subsetName(host, labels),
+				Subset: subsetName(labels),
 				Port:   port,
 			},
 		})
@@ -417,7 +428,7 @@ func addHttpFeatures(rule *v1.RoutingRule, virtualService *v1alpha3.VirtualServi
 			}
 			http.Mirror = &v1alpha3.Destination{
 				Host:   host,
-				Subset: subsetName(host, labels),
+				Subset: subsetName(labels),
 			}
 		}
 		if rule.HeaderManipulaition != nil {
