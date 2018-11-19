@@ -21,11 +21,6 @@ import (
 	"k8s.io/client-go/kubernetes"
 )
 
-const (
-	istioMeshType    = "istio"
-	linkerd2MeshType = "linkerd2"
-)
-
 var _ = Describe("PrometheusSyncer", func() {
 	type test struct {
 		meshType      string
