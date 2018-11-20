@@ -33,15 +33,7 @@ func GetUpstreamClient() (*glooV1.UpstreamClient, error) {
 }
 
 func GetSecretClient() (*glooV1.SecretClient, error) {
-	config, err := GetKubernetesConfig()
-	if err != nil {
-		return nil, err
-	}
-
-	clientset, err := kubernetes.NewForConfig(config)
-	if err != nil {
-		return nil, err
-	}
+	clientset, err := GetKubernetesClient()
 	secretClient, err := glooV1.NewSecretClient(&factory.KubeSecretClientFactory{
 		Clientset: clientset,
 	})
