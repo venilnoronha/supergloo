@@ -71,6 +71,10 @@ server:
     enabled: false
     maxUnavailable: null
 
+client:
+  enabled: true
+  grpc: true
+
 connectInject:
   enabled: @@MTLS_ENABLED@@
 `
