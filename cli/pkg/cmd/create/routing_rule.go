@@ -19,7 +19,7 @@ import (
 )
 
 func RoutingRuleCmd(opts *options.Options) *cobra.Command {
-	rrOpts := opts.Create.RoutingRule
+	rrOpts := &(opts.Create).RoutingRule
 	cmd := &cobra.Command{
 		Use:   "routingrule",
 		Short: `Create a route rule with the given name`,
@@ -48,7 +48,7 @@ func RoutingRuleCmd(opts *options.Options) *cobra.Command {
 }
 
 func createRoutingRule(routeName string, opts *options.Options) error {
-	rrOpts := opts.Create.RoutingRule
+	rrOpts := &(opts.Create).RoutingRule
 
 	// Ensure that the given mesh exists
 	meshClient, err := common.GetMeshClient()
