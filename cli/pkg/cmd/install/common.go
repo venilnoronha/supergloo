@@ -25,6 +25,23 @@ func getNewInstallName(opts *options.Options) string {
 	return fmt.Sprintf("%v-%v", opts.Install.MeshType, common.RandStringBytes(6))
 }
 
+func getMetadataFromOpts(opts *options.Options) core.Metadata {
+	return core.Metadata{
+		Name:      getNewInstallName(opts),
+		Namespace: constants.SuperglooNamespace,
+	}
+}
+
+func getEncryptionFromOpts(opts *options.Options) *v1.Encryption {
+	if opts.Install.Mtls {
+		return &v1.Encryption{
+			TlsEnabled: opts.Install.Mtls,
+			Secret:     &opts.Install.SecretRef,
+		}
+	}
+	return &v1.Encryption{}
+}
+
 func qualifyFlags(opts *options.Options) error {
 	top := opts.Top
 	iop := &opts.Install
