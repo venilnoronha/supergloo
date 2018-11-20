@@ -11,6 +11,10 @@ const (
 	// The character used as a separator when specifying CLI options that are to be interpreted as a list of values
 	ListOptionSeparator = ","
 
+	// The character used as a separator for elements of a CLI lis option that are lists themselves
+	// E.g. "--matchers="prefix=/root,methods=GET|PUT"
+	SubListOptionSeparator = "|"
+
 	// The character used as a separator when specifying CLI options values that are namespace-scoped
 	// E.g. "--source=my-namespace:my-upstream-name"
 	NamespacedResourceSeparator = ":"

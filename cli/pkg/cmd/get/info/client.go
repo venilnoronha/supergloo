@@ -10,8 +10,6 @@ import (
 	"github.com/solo-io/supergloo/cli/pkg/common"
 	sgConstants "github.com/solo-io/supergloo/pkg/constants"
 
-	"github.com/solo-io/solo-kit/pkg/api/v1/clients/factory"
-	"github.com/solo-io/solo-kit/pkg/api/v1/clients/kube"
 	"github.com/solo-io/solo-kit/pkg/utils/kubeutils"
 	superglooV1 "github.com/solo-io/supergloo/pkg/api/v1"
 	k8sApiExt "k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset/typed/apiextensions/v1beta1"
@@ -19,17 +17,18 @@ import (
 	"k8s.io/client-go/rest"
 )
 
-type InfoClient interface {
+type SuperglooInfoClient interface {
 	ListResourceTypes() ([]string, error)
-	ListResources(resourceType, resourceName string) (ResourceInfo, error)
+	ListResources(resourceType, resourceName string) (*ResourceInfo, error)
 }
 
 type KubernetesInfoClient struct {
-	kubeCrdClient *k8sApiExt.CustomResourceDefinitionInterface
-	meshClient    *superglooV1.MeshClient
+	kubeCrdClient      *k8sApiExt.CustomResourceDefinitionInterface
+	meshClient         *superglooV1.MeshClient
+	routingRulesClient *superglooV1.RoutingRuleClient
 }
 
-func NewClient() (InfoClient, error) {
+func NewClient() (SuperglooInfoClient, error) {
 	config, err := kubeutils.GetConfig("", "")
 	if err != nil {
 		return nil, fmt.Errorf(common.KubeConfigError, err)
@@ -40,21 +39,20 @@ func NewClient() (InfoClient, error) {
 		return nil, err
 	}
 
-	meshClient, err := superglooV1.NewMeshClient(&factory.KubeResourceClientFactory{
-		Crd:         superglooV1.MeshCrd,
-		Cfg:         config,
-		SharedCache: kube.NewKubeCache(),
-	})
+	meshClient, err := common.GetMeshClient()
 	if err != nil {
 		return nil, err
 	}
-	if err = meshClient.Register(); err != nil {
+
+	rrClient, err := common.GetRoutingRuleClient()
+	if err != nil {
 		return nil, err
 	}
 
 	client := &KubernetesInfoClient{
-		kubeCrdClient: crdClient,
-		meshClient:    &meshClient,
+		kubeCrdClient:      crdClient,
+		meshClient:         meshClient,
+		routingRulesClient: rrClient,
 	}
 
 	return client, nil
@@ -79,7 +77,7 @@ func (client *KubernetesInfoClient) ListResourceTypes() ([]string, error) {
 	return superglooCRDs, nil
 }
 
-func (client *KubernetesInfoClient) ListResources(resourceType, resourceName string) (ResourceInfo, error) {
+func (client *KubernetesInfoClient) ListResources(resourceType, resourceName string) (*ResourceInfo, error) {
 	// TODO(marco): make code more generic. Ideally we don't want to enumerate the different options, but I could not
 	// find an interface that all of the generated clients implement
 	switch resourceType {
@@ -89,13 +87,28 @@ func (client *KubernetesInfoClient) ListResources(resourceType, resourceName str
 			if err != nil {
 				return nil, err
 			}
-			return FromList(&meshList), nil
+			return FromMeshList(&meshList), nil
 		} else {
 			mesh, err := (*client.meshClient).Read(sgConstants.SuperglooNamespace, resourceName, clients.ReadOpts{})
 			if err != nil {
 				return nil, err
 			}
-			return From(mesh), nil
+			return FromMesh(mesh), nil
+		}
+	case "routingrules":
+		if resourceName == "" {
+			// TODO: replace with supergloo namespace
+			rrList, err := (*client.routingRulesClient).List("default", clients.ListOpts{})
+			if err != nil {
+				return nil, err
+			}
+			return FromRoutingRuleList(&rrList), nil
+		} else {
+			rr, err := (*client.routingRulesClient).Read("default", resourceName, clients.ReadOpts{})
+			if err != nil {
+				return nil, err
+			}
+			return FromRoutingRule(rr), nil
 		}
 	default:
 		// Should not happen since we validate the resource

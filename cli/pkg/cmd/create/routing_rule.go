@@ -39,7 +39,7 @@ func RoutingRuleCmd(opts *options.Options) *cobra.Command {
 	flags.StringVar(&rrOpts.Sources, "sources", "", "Sources for this rule. Each entry consists of an upstream namespace and and upstream name, separated by a colon.")
 	flags.StringVar(&rrOpts.Destinations, "destinations", "", "Destinations for this rule. Same format as for 'sources'")
 	flags.BoolVar(&rrOpts.OverrideExisting, "override", false, "If set to \"true\", the command will override any existing routing rule that matches the given namespace and name")
-	&rrOpts.Matchers = flags.StringArrayP("matchers", "m", nil, "Matcher for this rule")
+	rrOpts.Matchers = *flags.StringArrayP("matchers", "m", nil, "Matcher for this rule")
 
 	// The only required option is the target mesh
 	cmd.MarkFlagRequired("mesh")
@@ -191,8 +191,8 @@ func validateMatchers(matcherOption []string) ([]*glooV1.Matcher, error) {
 					return nil, errors.Errorf(common.InvalidOptionFormat, clause, "create routingrule")
 				}
 
-				methods := strings.Split(value, "|")
-				validMethods := strings.Split(common.ValidMatcherHttpMethods, "|")
+				methods := strings.Split(value, common.SubListOptionSeparator)
+				validMethods := strings.Split(common.ValidMatcherHttpMethods, common.SubListOptionSeparator)
 				for _, method := range methods {
 					if !common.Contains(validMethods, strings.ToUpper(method)) {
 						return nil, errors.Errorf(common.InvalidMatcherHttpMethod, method)
