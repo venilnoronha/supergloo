@@ -48,20 +48,20 @@ func qualifyFlags(opts *options.Options) error {
 		return nil
 	}
 
+	if iop.Namespace == "" {
+		namespace, err := chooseNamespace(opts)
+		iop.Namespace = namespace
+		if err != nil {
+			return fmt.Errorf("input error")
+		}
+	}
+
 	if iop.MeshType == "" {
 		chosenMesh, err := chooseMeshType()
 		iop.MeshType = chosenMesh
 		if err != nil {
 			return fmt.Errorf("input error")
 		}
-	}
-
-	if iop.Namespace == "" {
-		namespace, err := common.ChooseNamespace(opts, "Select a namespace")
-		if err != nil {
-			return fmt.Errorf("input error")
-		}
-		iop.Namespace = namespace
 	}
 
 	chosenMtls, err := chooseMtls()
@@ -104,6 +104,26 @@ func chooseMeshType() (string, error) {
 	return choice, nil
 }
 
+func chooseNamespace(opts *options.Options) (string, error) {
+
+	// TODO(mitchdraft) - get from system
+	// namespaceOptions := []string{"ns1", "ns2", "ns3"}
+
+	question := &survey.Select{
+		Message: "Select a namespace",
+		Options: opts.Cache.Namespaces,
+	}
+
+	var choice string
+	if err := survey.AskOne(question, &choice, survey.Required); err != nil {
+		// this should not error
+		fmt.Println("error with input")
+		return "", err
+	}
+
+	return choice, nil
+}
+
 func chooseMtls() (bool, error) {
 
 	options := []string{"yes", "no"}
@@ -128,6 +148,10 @@ func chooseMtls() (bool, error) {
 }
 
 func chooseSecretNamespace(opts *options.Options) (string, error) {
+
+	// TODO(mitchdraft) - get from system
+	// AND restrict these to the NS that have secrets
+	// namespaceOptions := []string{"ns1", "ns2", "ns3"}
 
 	question := &survey.Select{
 		Message: "Select a secret namespace",
