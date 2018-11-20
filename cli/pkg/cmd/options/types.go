@@ -55,8 +55,17 @@ type RoutingRule struct {
 	OverrideExisting bool
 }
 
+type Secret struct {
+	RootCa     string
+	PrivateKey string
+	CertChain  string
+	Namespace  string
+	Name       string
+}
+
 type Create struct {
 	RoutingRule RoutingRule
+	Secret      Secret
 }
 
 // OptionsCache holds resources that multiple commands need
