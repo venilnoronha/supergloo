@@ -138,6 +138,7 @@ func Main() error {
 	writeErrs := make(chan error)
 
 	istioRoutingSyncer := &istio.MeshRoutingSyncer{
+		WriteNamespaces:           defaultNamespaces,
 		DestinationRuleReconciler: v1alpha3.NewDestinationRuleReconciler(destinationRuleClient),
 		VirtualServiceReconciler:  v1alpha3.NewVirtualServiceReconciler(virtualServiceClient),
 		Reporter:                  rpt,

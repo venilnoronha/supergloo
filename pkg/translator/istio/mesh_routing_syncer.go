@@ -18,6 +18,8 @@ import (
 )
 
 type MeshRoutingSyncer struct {
+	// needed so we can clean up hanging crds
+	WriteNamespaces           []string
 	WriteSelector             map[string]string // for reconciling only our resources
 	DestinationRuleReconciler v1alpha3.DestinationRuleReconciler
 	VirtualServiceReconciler  v1alpha3.VirtualServiceReconciler
@@ -494,8 +496,8 @@ func (s *MeshRoutingSyncer) writeIstioCrds(ctx context.Context, destinationRules
 	contextutils.LoggerFrom(ctx).Infof("reconciling %v destination rules", len(destinationRules))
 	drByNamespace := make(v1alpha3.DestinationrulesByNamespace)
 	drByNamespace.Add(destinationRules...)
-	for ns, destinationRules := range drByNamespace {
-		if err := s.DestinationRuleReconciler.Reconcile(ns, destinationRules, preserveDestinationRule, opts); err != nil {
+	for _, ns := range s.WriteNamespaces {
+		if err := s.DestinationRuleReconciler.Reconcile(ns, drByNamespace[ns], preserveDestinationRule, opts); err != nil {
 			return errors.Wrapf(err, "reconciling destination rules")
 		}
 	}
@@ -503,8 +505,8 @@ func (s *MeshRoutingSyncer) writeIstioCrds(ctx context.Context, destinationRules
 	contextutils.LoggerFrom(ctx).Infof("reconciling %v virtual services", len(virtualServices))
 	vsByNamespace := make(v1alpha3.VirtualservicesByNamespace)
 	vsByNamespace.Add(virtualServices...)
-	for ns, virtualServices := range vsByNamespace {
-		if err := s.VirtualServiceReconciler.Reconcile(ns, virtualServices, preserveVirtualService, opts); err != nil {
+	for _, ns := range s.WriteNamespaces {
+		if err := s.VirtualServiceReconciler.Reconcile(ns, vsByNamespace[ns], preserveVirtualService, opts); err != nil {
 			return errors.Wrapf(err, "reconciling virtual services")
 		}
 	}
