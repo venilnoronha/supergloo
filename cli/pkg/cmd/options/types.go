@@ -51,7 +51,7 @@ type RoutingRule struct {
 	Namespace        string
 	Sources          string
 	Destinations     string
-	Matchers         string
+	Matchers         []string
 	OverrideExisting bool
 }
 

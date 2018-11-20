@@ -34,15 +34,12 @@ func RoutingRuleCmd(opts *options.Options) *cobra.Command {
 		},
 	}
 	flags := cmd.Flags()
-	flags.StringVarP(&rrOpts.Mesh, "mesh", "", "", "The mesh that will be the target for this rule")
-	flags.StringVarP(&rrOpts.Namespace, "namespace", "n", "default",
-		"The namespace for this routing rule. Defaults to \"default\"")
-	flags.StringVarP(&rrOpts.Sources, "sources", "", "", "Sources for this rule. Each entry "+
-		"consists of an upstream namespace and and upstream name, separated by a colon.")
-	flags.StringVarP(&rrOpts.Destinations, "destinations", "", "", "Destinations for this rule. Same format as for 'sources'")
-	flags.StringVarP(&rrOpts.Matchers, "matchers", "", "", "Matchers for this rule")
-	flags.BoolVarP(&rrOpts.OverrideExisting, "override", "", false, "If set to \"true\", "+
-		"the command will override any existing routing rule that matches the given namespace and name")
+	flags.StringVar(&rrOpts.Mesh, "mesh", "", "The mesh that will be the target for this rule")
+	flags.StringVarP(&rrOpts.Namespace, "namespace", "n", "default", "The namespace for this routing rule. Defaults to \"default\"")
+	flags.StringVar(&rrOpts.Sources, "sources", "", "Sources for this rule. Each entry consists of an upstream namespace and and upstream name, separated by a colon.")
+	flags.StringVar(&rrOpts.Destinations, "destinations", "", "Destinations for this rule. Same format as for 'sources'")
+	flags.BoolVar(&rrOpts.OverrideExisting, "override", false, "If set to \"true\", the command will override any existing routing rule that matches the given namespace and name")
+	&rrOpts.Matchers = flags.StringArrayP("matchers", "m", nil, "Matcher for this rule")
 
 	// The only required option is the target mesh
 	cmd.MarkFlagRequired("mesh")
@@ -92,7 +89,7 @@ func createRoutingRule(routeName string, opts *options.Options) error {
 
 	// Validate matchers
 	var matchers []*glooV1.Matcher
-	if rrOpts.Matchers != "" {
+	if rrOpts.Matchers != nil {
 		matchers, err = validateMatchers(rrOpts.Matchers)
 	}
 	if err != nil {
@@ -155,38 +152,61 @@ func validateUpstreams(client *glooV1.UpstreamClient, upstreamOption string) ([]
 	return upstreams, nil
 }
 
-func validateMatchers(matcherOption string) ([]*glooV1.Matcher, error) {
-	matchers := strings.Split(matcherOption, common.ListOptionSeparator)
-	result := make([]*glooV1.Matcher, len(matchers))
+func validateMatchers(matcherOption []string) ([]*glooV1.Matcher, error) {
+	result := make([]*glooV1.Matcher, len(matcherOption))
 
-	for i, m := range matchers {
+	// Each 'matcher' is one occurrence of the --matchers flag and will result in one glooV1.Matcher object
+	// e.g. matcher = "prefix=/some/path,methods=get|post"
+	for i, matcher := range matcherOption {
+		m := &glooV1.Matcher{}
 
-		parts := strings.Split(m, "=")
-		if len(parts) != 2 {
-			return nil, fmt.Errorf(common.InvalidOptionFormat, m, "create routingrule")
-		}
+		// 'clauses' is an array of matcher clauses
+		// e.g. clauses = { "prefix=/some/path" , "methods=get|post" }
+		clauses := strings.Split(matcher, common.ListOptionSeparator)
+		for _, clause := range clauses {
 
-		matcherType, value := parts[0], parts[1]
-		switch matcherType {
-
-		// TODO: make these (and other string literals around here) constants
-		case "prefix":
-			// TODO(marco) validate if valid URL path?
-			result[i] = &glooV1.Matcher{PathSpecifier: &glooV1.Matcher_Prefix{Prefix: value}}
-
-		case "methods":
-			methods := strings.Split(value, "|")
-			validMethods := strings.Split(common.ValidMatcherHttpMethods, "|")
-			for _, method := range methods {
-				if !common.Contains(validMethods, strings.ToUpper(method)) {
-					return nil, errors.Errorf(common.InvalidMatcherHttpMethod, method)
-				}
+			// 'parts' are the two parts of the clause, separated by the "=" character
+			// e.g. parts = { "prefix", "/some/path"}
+			parts := strings.Split(clause, "=")
+			if len(parts) != 2 {
+				return nil, fmt.Errorf(common.InvalidOptionFormat, clause, "create routingrule")
 			}
-			result[i] = &glooV1.Matcher{Methods: methods}
 
-		default:
-			return nil, fmt.Errorf(common.InvalidOptionFormat, m, "create routingrule")
+			matcherType, value := parts[0], parts[1]
+			switch matcherType {
+			// TODO: make these (and other string literals around here) constants
+			case "prefix":
+
+				// We can have only one path specifier per matcher
+				if m.PathSpecifier != nil {
+					return nil, errors.Errorf(common.InvalidOptionFormat, clause, "create routingrule")
+				}
+				m.PathSpecifier = &glooV1.Matcher_Prefix{Prefix: value}
+
+			case "methods":
+
+				// If the user specified more than one "methods" clause, return error. We could just merge the two
+				// clauses, but this scenario is most likely an error we want the user to be aware of.
+				if m.Methods != nil {
+					return nil, errors.Errorf(common.InvalidOptionFormat, clause, "create routingrule")
+				}
+
+				methods := strings.Split(value, "|")
+				validMethods := strings.Split(common.ValidMatcherHttpMethods, "|")
+				for _, method := range methods {
+					if !common.Contains(validMethods, strings.ToUpper(method)) {
+						return nil, errors.Errorf(common.InvalidMatcherHttpMethod, method)
+					}
+				}
+				m.Methods = methods
+
+			default:
+				return nil, fmt.Errorf(common.InvalidOptionFormat, clause, "create routingrule")
+			}
 		}
+
+		result[i] = m
 	}
+
 	return result, nil
 }
