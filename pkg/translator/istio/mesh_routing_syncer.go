@@ -287,11 +287,15 @@ func virtualServiceForHost(host string, rules v1.RoutingRuleList, mesh *v1.Mesh,
 				return nil, errors.Wrapf(err, "creating multi destination route")
 			}
 		}
-
-		istioRules = append(istioRules, &v1alpha3.HTTPRoute{
+		httpRoute := &v1alpha3.HTTPRoute{
 			Match: match,
 			Route: route,
-		})
+		}
+		if err := addHttpFeatures(rule, httpRoute, upstreams); err != nil {
+			return nil, errors.Wrapf(err, "adding http features to route")
+		}
+
+		istioRules = append(istioRules, httpRoute)
 	}
 
 	return &v1alpha3.VirtualService{
@@ -311,84 +315,6 @@ func virtualServiceForHost(host string, rules v1.RoutingRuleList, mesh *v1.Mesh,
 		//}},
 	}, nil
 }
-
-//func virtualServicesForRule(rule *v1.RoutingRule, meshes v1.MeshList, upstreams gloov1.UpstreamList) (v1alpha3.VirtualServiceList, error) {
-//	istioMesh, err := getIstioMeshForRule(rule, meshes)
-//	if err != nil {
-//		return nil, err
-//	}
-//	// we can only write our crds to a namespace istio watches
-//	// just pick the first one for now
-//	// if empty, it defaults to supergloo-system & default
-//	validNamespaces := istioMesh.WatchNamespaces
-//	if len(validNamespaces) == 0 {
-//		validNamespaces = []string{defaults.Namespace, "default"}
-//	}
-//	var found bool
-//	for _, ns := range validNamespaces {
-//		if ns == rule.Metadata.Namespace {
-//			found = true
-//			break
-//		}
-//	}
-//	if !found {
-//		return nil, errors.Errorf("routing rule %v is not in a namespace that belongs to target mesh",
-//			rule.Metadata.Ref())
-//	}
-//
-//	// matcher is the same regardless of destination
-//	istioMatcher, err := createIstioMatcher(rule, upstreams)
-//	if err != nil {
-//		return nil, errors.Wrapf(err, "creating istio matcher")
-//	}
-//	var destinationUpstreams gloov1.UpstreamList
-//	if len(rule.Destinations) == 0 {
-//		destinationUpstreams = upstreams
-//	} else {
-//		for _, dest := range rule.Destinations {
-//			ups, err := upstreams.Find(dest.Strings())
-//			if err != nil {
-//				return nil, errors.Wrapf(err, "invalid destination for rule %v", dest)
-//			}
-//			destinationUpstreams = append(destinationUpstreams, ups)
-//		}
-//	}
-//
-//	var virtualServices v1alpha3.VirtualServiceList
-//	for _, us := range destinationUpstreams {
-//		labels := getLabelsForUpstream(us)
-//		host, err := getHostForUpstream(us)
-//		if err != nil {
-//			return nil, errors.Wrapf(err, "getting host for upstream")
-//		}
-//
-//		destinations, err := createIstioRoute(host, labels, rule, upstreams)
-//		if err != nil {
-//			return nil, errors.Wrapf(err, "creating istio destinations")
-//		}
-//		vs := &v1alpha3.VirtualService{
-//			Metadata: core.Metadata{
-//				Name:      rule.Metadata.Name + "-" + us.Metadata.Name,
-//				Namespace: rule.Metadata.Namespace,
-//			},
-//			Hosts: []string{host},
-//			// in istio api, this is equivalent to []string{"mesh"}
-//			// which includes all pods in the mesh, with no selectors
-//			// and no ingresses
-//			Gateways: []string{"mesh"},
-//			Http: []*v1alpha3.HTTPRoute{{
-//				Match: istioMatcher,
-//				Route: destinations,
-//			}},
-//		}
-//		if err := addHttpFeatures(rule, vs, upstreams); err != nil {
-//			return nil, errors.Wrapf(err, "failed to add http features to virtual service")
-//		}
-//		virtualServices = append(virtualServices, vs)
-//	}
-//
-//	return virtualServices, nil
-//}
 
 func createIstioMatcher(rule *v1.RoutingRule, upstreams gloov1.UpstreamList) ([]*v1alpha3.HTTPMatchRequest, error) {
 	var sourceLabelSets []map[string]string
@@ -533,29 +459,28 @@ func createIstioRoute(destinations []*v1.WeightedDestination, upstreams gloov1.U
 	return istioDestinations, nil
 }
 
-func addHttpFeatures(rule *v1.RoutingRule, virtualService *v1alpha3.VirtualService, upstreams gloov1.UpstreamList) error {
-	for _, http := range virtualService.Http {
-		http.CorsPolicy = rule.CorsPolicy
-		http.Retries = rule.Retries
-		http.Timeout = rule.Timeout
-		if rule.Mirror != nil {
-			us, err := upstreams.Find(rule.Mirror.Upstream.Strings())
-			labels := getLabelsForUpstream(us)
-			host, err := getHostForUpstream(us)
-			if err != nil {
-				return errors.Wrapf(err, "getting host for upstream")
-			}
-			http.Mirror = &v1alpha3.Destination{
-				Host:   host,
-				Subset: subsetName(labels),
-			}
+func addHttpFeatures(rule *v1.RoutingRule, http *v1alpha3.HTTPRoute, upstreams gloov1.UpstreamList) error {
+	http.Fault = rule.FaultInjection
+	http.CorsPolicy = rule.CorsPolicy
+	http.Retries = rule.Retries
+	http.Timeout = rule.Timeout
+	if rule.Mirror != nil {
+		us, err := upstreams.Find(rule.Mirror.Upstream.Strings())
+		labels := getLabelsForUpstream(us)
+		host, err := getHostForUpstream(us)
+		if err != nil {
+			return errors.Wrapf(err, "getting host for upstream")
 		}
-		if rule.HeaderManipulaition != nil {
-			http.RemoveRequestHeaders = rule.HeaderManipulaition.RemoveRequestHeaders
-			http.AppendRequestHeaders = rule.HeaderManipulaition.AppendRequestHeaders
-			http.RemoveResponseHeaders = rule.HeaderManipulaition.RemoveResponseHeaders
-			http.AppendResponseHeaders = rule.HeaderManipulaition.AppendResponseHeaders
+		http.Mirror = &v1alpha3.Destination{
+			Host:   host,
+			Subset: subsetName(labels),
 		}
+	}
+	if rule.HeaderManipulaition != nil {
+		http.RemoveRequestHeaders = rule.HeaderManipulaition.RemoveRequestHeaders
+		http.AppendRequestHeaders = rule.HeaderManipulaition.AppendRequestHeaders
+		http.RemoveResponseHeaders = rule.HeaderManipulaition.RemoveResponseHeaders
+		http.AppendResponseHeaders = rule.HeaderManipulaition.AppendResponseHeaders
 	}
 	return nil
 }
