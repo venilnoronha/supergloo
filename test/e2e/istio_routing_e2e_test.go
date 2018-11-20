@@ -45,9 +45,7 @@ var _ = FDescribe("istio routing E2e", func() {
 					ErrorType: &v1alpha3.HTTPFaultInjection_Abort_HttpStatus{
 						HttpStatus: 566,
 					},
-					Percentage: &v1alpha3.Percent{
-						Value: 100,
-					},
+					Percent: 100,
 				},
 			},
 		}, clients.WriteOpts{})

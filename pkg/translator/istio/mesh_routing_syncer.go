@@ -276,7 +276,7 @@ func virtualServiceForHost(host string, rules v1.RoutingRuleList, mesh *v1.Mesh,
 		}
 
 		// default: single destination, original
-		route := []*v1alpha3.HTTPRouteDestination{{
+		route := []*v1alpha3.DestinationWeight{{
 			Destination: &v1alpha3.Destination{
 				Host: host,
 			},
@@ -426,8 +426,8 @@ func convertMatcher(sourceSelector map[string]string, match *gloov1.Matcher) *v1
 	}
 }
 
-func createIstioRoute(destinations []*v1.WeightedDestination, upstreams gloov1.UpstreamList) ([]*v1alpha3.HTTPRouteDestination, error) {
-	var istioDestinations []*v1alpha3.HTTPRouteDestination
+func createIstioRoute(destinations []*v1.WeightedDestination, upstreams gloov1.UpstreamList) ([]*v1alpha3.DestinationWeight, error) {
+	var istioDestinations []*v1alpha3.DestinationWeight
 	for _, dest := range destinations {
 		upstream, err := upstreams.Find(dest.Upstream.Strings())
 		if err != nil {
@@ -448,7 +448,7 @@ func createIstioRoute(destinations []*v1.WeightedDestination, upstreams gloov1.U
 				Port: &v1alpha3.PortSelector_Number{Number: intPort},
 			}
 		}
-		istioDestinations = append(istioDestinations, &v1alpha3.HTTPRouteDestination{
+		istioDestinations = append(istioDestinations, &v1alpha3.DestinationWeight{
 			Destination: &v1alpha3.Destination{
 				Host:   host,
 				Subset: subsetName(labels),
@@ -477,10 +477,10 @@ func addHttpFeatures(rule *v1.RoutingRule, http *v1alpha3.HTTPRoute, upstreams g
 		}
 	}
 	if rule.HeaderManipulaition != nil {
-		http.RemoveRequestHeaders = rule.HeaderManipulaition.RemoveRequestHeaders
-		http.AppendRequestHeaders = rule.HeaderManipulaition.AppendRequestHeaders
+		//http.RemoveRequestHeaders = rule.HeaderManipulaition.RemoveRequestHeaders
+		http.AppendHeaders = rule.HeaderManipulaition.AppendRequestHeaders
 		http.RemoveResponseHeaders = rule.HeaderManipulaition.RemoveResponseHeaders
-		http.AppendResponseHeaders = rule.HeaderManipulaition.AppendResponseHeaders
+		//http.AppendResponseHeaders = rule.HeaderManipulaition.AppendResponseHeaders
 	}
 	return nil
 }
