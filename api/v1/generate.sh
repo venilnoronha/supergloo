@@ -29,8 +29,10 @@ protoc ${IMPORTS} \
     ${INPUT_PROTOS}
 
 # Run protoc once for solo kit
-SOLO_KIT_FLAG="--plugin=protoc-gen-solo-kit=${GOPATH}/bin/protoc-gen-solo-kit --solo-kit_out=${PWD}/project.json:${OUT}"
+RELATIVE_ROOT=../../..
+SOLO_KIT_FLAG="--plugin=protoc-gen-solo-kit=${GOPATH}/bin/protoc-gen-solo-kit --solo-kit_out=${OUT} --solo-kit_opt=${PWD}/project.json,${RELATIVE_ROOT}/doc/docs/v1"
 INPUT_PROTOS="${IN}/*.proto ${GLOO_IN}/upstream.proto ${ISTIO_ENCRYPTION_IN}/secret.proto"
+
 
 protoc ${IMPORTS} \
     ${SOLO_KIT_FLAG} \
