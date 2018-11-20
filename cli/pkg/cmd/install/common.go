@@ -57,11 +57,11 @@ func qualifyFlags(opts *options.Options) error {
 	}
 
 	if iop.Namespace == "" {
-		namespace, err := chooseNamespace(opts)
-		iop.Namespace = namespace
+		namespace, err := common.ChooseNamespace(opts, "Select a namespace")
 		if err != nil {
 			return fmt.Errorf("input error")
 		}
+		iop.Namespace = namespace
 	}
 
 	chosenMtls, err := chooseMtls()
@@ -92,23 +92,6 @@ func chooseMeshType() (string, error) {
 	question := &survey.Select{
 		Message: "Select a mesh type",
 		Options: constants.MeshOptions,
-	}
-
-	var choice string
-	if err := survey.AskOne(question, &choice, survey.Required); err != nil {
-		// this should not error
-		fmt.Println("error with input")
-		return "", err
-	}
-
-	return choice, nil
-}
-
-func chooseNamespace(opts *options.Options) (string, error) {
-
-	question := &survey.Select{
-		Message: "Select a namespace",
-		Options: opts.Cache.Namespaces,
 	}
 
 	var choice string
