@@ -83,7 +83,7 @@ func qualifyFlags(opts *options.Options) error {
 		iop.Namespace = namespace
 	}
 
-	if common.Contains([]string{"istio", "linkerd2"}, iop.MeshType) {
+	if common.Contains([]string{common.Istio, common.Linkerd2}, iop.MeshType) {
 		watchNamespaces, err := chooseWatchNamespaces(opts)
 		if err != nil {
 			return fmt.Errorf("input error")
