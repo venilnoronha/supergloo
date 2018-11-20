@@ -20,16 +20,13 @@ type Top struct {
 }
 
 type Install struct {
-	Filename  string
-	MeshType  string
-	Namespace string
-	Mtls      bool
-	SecretRef core.ResourceRef
-	Consul    ConsulArgs
-}
-
-type ConsulArgs struct {
-	Namespace string
+	Filename            string
+	MeshType            string
+	Namespace           string
+	Mtls                bool
+	SecretRef           core.ResourceRef
+	WatchNamespaces     []string
+	ConsulServerAddress string
 }
 
 type MeshTool struct {

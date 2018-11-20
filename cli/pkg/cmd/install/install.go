@@ -3,7 +3,12 @@ package install
 import (
 	"fmt"
 
+	"github.com/solo-io/supergloo/cli/pkg/common"
+
+	"github.com/solo-io/solo-kit/pkg/api/v1/clients"
+
 	"github.com/solo-io/supergloo/cli/pkg/cmd/options"
+	"github.com/solo-io/supergloo/pkg/api/v1"
 	"github.com/spf13/cobra"
 )
 
@@ -36,21 +41,27 @@ func install(opts *options.Options) {
 		return
 	}
 
-	iop := &opts.Install
-	switch iop.MeshType {
-	case "consul":
-		installConsul(opts)
-		return
-	case "istio":
-		fmt.Println("istio TODO")
-		return
-	case "linkerd2":
-		fmt.Println("ld TODO")
-		return
-	default:
-		// should not get here
-		fmt.Println("Please choose a valid mesh")
+	installClient, err := common.GetInstallClient()
+	if err != nil {
+		fmt.Println(err)
 		return
 	}
 
+	var installSpec *v1.Install
+	switch opts.Install.MeshType {
+	case "consul":
+		installSpec = generateConsulInstallSpecFromOpts(opts)
+	case "istio":
+		installSpec = generateIstioInstallSpecFromOpts(opts)
+	case "linkerd2":
+		installSpec = generateLinkerd2InstallSpecFromOpts(opts)
+	}
+
+	_, err = (*installClient).Write(installSpec, clients.WriteOpts{})
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+	installationSummaryMessage(opts)
+	return
 }
