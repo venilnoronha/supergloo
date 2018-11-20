@@ -19,7 +19,6 @@ import (
 
 type MeshRoutingSyncer struct {
 	WriteSelector             map[string]string // for reconciling only our resources
-	WriteNamespace            string
 	DestinationRuleReconciler v1alpha3.DestinationRuleReconciler
 	VirtualServiceReconciler  v1alpha3.VirtualServiceReconciler
 	Reporter                  reporter.Reporter
@@ -35,9 +34,8 @@ func sanitizeName(name string) string {
 	return name
 }
 
-func updateMetadataForWriting(meta *core.Metadata, writeNamespace string, writeSelector map[string]string) {
+func updateMetadataForWriting(meta *core.Metadata, writeSelector map[string]string) {
 	meta.Name = sanitizeName(meta.Name)
-	meta.Namespace = writeNamespace
 	if meta.Annotations == nil {
 		meta.Annotations = make(map[string]string)
 	}
@@ -72,10 +70,10 @@ func (s *MeshRoutingSyncer) Sync(ctx context.Context, snap *v1.TranslatorSnapsho
 		return errors.Wrapf(err, "creating virtual services from snapshot")
 	}
 	for _, res := range destinationRules {
-		updateMetadataForWriting(&res.Metadata, s.WriteNamespace, s.WriteSelector)
+		updateMetadataForWriting(&res.Metadata, s.WriteSelector)
 	}
 	for _, res := range virtualServices {
-		updateMetadataForWriting(&res.Metadata, s.WriteNamespace, s.WriteSelector)
+		updateMetadataForWriting(&res.Metadata, s.WriteSelector)
 	}
 	return s.writeIstioCrds(ctx, destinationRules, virtualServices)
 }
@@ -241,7 +239,7 @@ func virtualServicesForRule(rule *v1.RoutingRule, meshes v1.MeshList, upstreams 
 		}
 		vs := &v1alpha3.VirtualService{
 			Metadata: core.Metadata{
-				Name:      us.Metadata.Name + "-" + rule.Metadata.Name,
+				Name:      rule.Metadata.Name + "-" + us.Metadata.Name,
 				Namespace: rule.Metadata.Namespace,
 			},
 			Hosts: []string{host},
@@ -448,12 +446,21 @@ func (s *MeshRoutingSyncer) writeIstioCrds(ctx context.Context, destinationRules
 		Selector: s.WriteSelector,
 	}
 	contextutils.LoggerFrom(ctx).Infof("reconciling %v destination rules", len(destinationRules))
-	if err := s.DestinationRuleReconciler.Reconcile(s.WriteNamespace, destinationRules, preserveDestinationRule, opts); err != nil {
-		return errors.Wrapf(err, "reconciling destination rules")
+	drByNamespace := make(v1alpha3.DestinationrulesByNamespace)
+	drByNamespace.Add(destinationRules...)
+	for ns, destinationRules := range drByNamespace {
+		if err := s.DestinationRuleReconciler.Reconcile(ns, destinationRules, preserveDestinationRule, opts); err != nil {
+			return errors.Wrapf(err, "reconciling destination rules")
+		}
 	}
+
 	contextutils.LoggerFrom(ctx).Infof("reconciling %v virtual services", len(virtualServices))
-	if err := s.VirtualServiceReconciler.Reconcile(s.WriteNamespace, virtualServices, preserveVirtualService, opts); err != nil {
-		return errors.Wrapf(err, "reconciling virtual services")
+	vsByNamespace := make(v1alpha3.VirtualservicesByNamespace)
+	vsByNamespace.Add(virtualServices...)
+	for ns, virtualServices := range vsByNamespace {
+		if err := s.VirtualServiceReconciler.Reconcile(ns, virtualServices, preserveVirtualService, opts); err != nil {
+			return errors.Wrapf(err, "reconciling virtual services")
+		}
 	}
 	return nil
 }

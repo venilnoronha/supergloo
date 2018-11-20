@@ -142,7 +142,6 @@ func Main() error {
 		VirtualServiceReconciler:  v1alpha3.NewVirtualServiceReconciler(virtualServiceClient),
 		Reporter:                  rpt,
 		WriteSelector:             map[string]string{"reconciler.solo.io": "supergloo.istio.routing"},
-		WriteNamespace:            "supergloo-system",
 	}
 
 	linkerd2PrometheusSyncer := linkerd2.NewPrometheusSyncer(kubeClient, prometheusClient)
