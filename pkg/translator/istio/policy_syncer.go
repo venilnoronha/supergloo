@@ -12,6 +12,10 @@ import (
 	"github.com/solo-io/solo-kit/pkg/api/v1/resources"
 	"github.com/solo-io/solo-kit/pkg/api/v1/resources/core"
 
+	"github.com/solo-io/solo-kit/pkg/api/v1/clients/factory"
+	"github.com/solo-io/solo-kit/pkg/api/v1/clients/kube"
+	"k8s.io/client-go/rest"
+
 	"github.com/solo-io/supergloo/pkg/api/external/istio/rbac/v1alpha1"
 	"github.com/solo-io/supergloo/pkg/api/v1"
 )
@@ -23,6 +27,53 @@ type PolicySyncer struct {
 	serviceRoleBindingReconciler v1alpha1.ServiceRoleBindingReconciler
 	serviceRoleReconciler        v1alpha1.ServiceRoleReconciler
 	rbacConfigReconciler         v1alpha1.RbacConfigReconciler
+}
+
+func NewPolicySyncer(writens string, kubeCache *kube.KubeCache, restConfig *rest.Config) (*PolicySyncer, error) {
+	var ps PolicySyncer
+	ps.WriteNamespace = writens
+
+	serviceRoleBindingClient, err := v1alpha1.NewServiceRoleBindingClient(&factory.KubeResourceClientFactory{
+		Crd:         v1alpha1.ServiceRoleBindingCrd,
+		Cfg:         restConfig,
+		SharedCache: kubeCache,
+	})
+	if err != nil {
+		return nil, err
+	}
+	if err := serviceRoleBindingClient.Register(); err != nil {
+		return nil, err
+	}
+	ps.serviceRoleBindingReconciler = v1alpha1.NewServiceRoleBindingReconciler(serviceRoleBindingClient)
+
+	serviceRoleClient, err := v1alpha1.NewServiceRoleClient(&factory.KubeResourceClientFactory{
+		Crd:         v1alpha1.ServiceRoleCrd,
+		Cfg:         restConfig,
+		SharedCache: kubeCache,
+	})
+	if err != nil {
+		return nil, err
+	}
+	if err := serviceRoleClient.Register(); err != nil {
+		return nil, err
+	}
+	ps.serviceRoleReconciler = v1alpha1.NewServiceRoleReconciler(serviceRoleClient)
+
+	rbacConfigClient, err := v1alpha1.NewRbacConfigClient(&factory.KubeResourceClientFactory{
+		Crd:         v1alpha1.RbacConfigCrd,
+		Cfg:         restConfig,
+		SharedCache: kubeCache,
+	})
+	if err != nil {
+		return nil, err
+	}
+	if err := rbacConfigClient.Register(); err != nil {
+		return nil, err
+	}
+	ps.rbacConfigReconciler = v1alpha1.NewRbacConfigReconciler(rbacConfigClient)
+
+	return &ps, nil
+
 }
 
 func (s *PolicySyncer) Sync(ctx context.Context, snap *v1.TranslatorSnapshot) error {

@@ -154,6 +154,10 @@ func Main() error {
 		Kube:         kubeClient,
 		SecretClient: secretClient,
 	}
+	istioPolicySyncer, err := istio.NewPolicySyncer("supergloo-system", kubeCache, restConfig)
+	if err != nil {
+		return err
+	}
 
 	translatorSyncers := v1.TranslatorSyncers{
 		istioRoutingSyncer,
@@ -162,6 +166,7 @@ func Main() error {
 		consulEncryptionSyncer,
 		consulPolicySyncer,
 		istioEncryptionSyncer,
+		istioPolicySyncer,
 	}
 
 	installSyncer := &install.InstallSyncer{
