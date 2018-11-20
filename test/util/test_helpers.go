@@ -117,6 +117,18 @@ func GetMeshClient(kubeCache *kube.KubeCache) v1.MeshClient {
 	return meshClient
 }
 
+func GetUpstreamClient(kubeCache *kube.KubeCache) gloo.UpstreamClient {
+	upstreamClient, err := gloo.NewUpstreamClient(&factory.KubeResourceClientFactory{
+		Crd:         gloo.UpstreamCrd,
+		Cfg:         GetKubeConfig(),
+		SharedCache: kubeCache,
+	})
+	Expect(err).Should(BeNil())
+	err = upstreamClient.Register()
+	Expect(err).Should(BeNil())
+	return upstreamClient
+}
+
 func DeleteCrb(crbName string) {
 	client := GetKubeClient()
 	client.RbacV1().ClusterRoleBindings().Delete(crbName, &kubemeta.DeleteOptions{})

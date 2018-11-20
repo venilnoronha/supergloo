@@ -28,8 +28,6 @@ import (
 	"github.com/solo-io/supergloo/pkg/install/consul"
 	consulSync "github.com/solo-io/supergloo/pkg/translator/consul"
 
-	consulplugin "github.com/solo-io/supergloo/pkg/api/external/gloo/v1/plugins/consul"
-
 	kubecore "k8s.io/api/core/v1"
 	kubemeta "k8s.io/apimachinery/pkg/apis/meta/v1"
 	helmkube "k8s.io/helm/pkg/kube"
@@ -55,10 +53,11 @@ var _ = Describe("Consul Install and Encryption E2E", func() {
 	kubeCache := kube.NewKubeCache()
 
 	var (
-		tunnel        *helmkube.Tunnel
-		meshClient    v1.MeshClient
-		secretClient  gloo.SecretClient
-		installSyncer install.InstallSyncer
+		tunnel         *helmkube.Tunnel
+		meshClient     v1.MeshClient
+		upstreamClient gloo.UpstreamClient
+		secretClient   gloo.SecretClient
+		installSyncer  install.InstallSyncer
 
 		pathToUds string
 	)
@@ -67,7 +66,9 @@ var _ = Describe("Consul Install and Encryption E2E", func() {
 		var err error
 		pathToUds, err = gexec.Build("github.com/solo-io/solo-projects/projects/discovery/cmd")
 		Expect(err).ShouldNot(HaveOccurred())
+	})
 
+	BeforeEach(func() {
 		ns := &kubecore.Namespace{
 			ObjectMeta: kubemeta.ObjectMeta{
 				Name: "supergloo-system",
@@ -83,6 +84,11 @@ var _ = Describe("Consul Install and Encryption E2E", func() {
 		util.GetKubeClient().CoreV1().Namespaces().Create(ns)
 	})
 
+	AfterEach(func() {
+		util.GetKubeClient().CoreV1().Namespaces().Delete("supergloo-system", &kubemeta.DeleteOptions{})
+		// delete gloo system to remove gloo resources like upstreams
+		util.GetKubeClient().CoreV1().Namespaces().Delete("gloo-system", &kubemeta.DeleteOptions{})
+	})
 	AfterSuite(func() {
 		gexec.CleanupBuildArtifacts()
 	})
@@ -143,6 +149,7 @@ var _ = Describe("Consul Install and Encryption E2E", func() {
 
 	BeforeEach(func() {
 		meshClient = util.GetMeshClient(kubeCache)
+		upstreamClient = util.GetUpstreamClient(kubeCache)
 		secretClient = util.GetSecretClient()
 		installSyncer = install.InstallSyncer{
 			Kube:       util.GetKubeClient(),
@@ -278,7 +285,7 @@ var _ = Describe("Consul Install and Encryption E2E", func() {
 			localport := tunnel.Local
 
 			// start discovery
-			cmd := exec.Command(pathToUds)
+			cmd := exec.Command(pathToUds, "-udsonly")
 			cmd.Env = os.Environ()
 			addr := fmt.Sprintf("localhost:%d", localport)
 			cmd.Env = append(cmd.Env, "CONSUL_HTTP_ADDR="+addr)
@@ -305,37 +312,25 @@ var _ = Describe("Consul Install and Encryption E2E", func() {
 
 			meshSyncer := consulSync.PolicySyncer{}
 			syncSnapshot := getTranslatorSnapshot(mesh, nil)
-			// TODO(yuval-k): get this from upstream client instead, to make sure
-			// discovery worked.
-			ups := []*gloo.Upstream{
-				{
-					Metadata: core.Metadata{
-						Name:      "static-server",
-						Namespace: "gloo-system",
-					},
-					UpstreamSpec: &gloo.UpstreamSpec{
-						UpstreamType: &gloo.UpstreamSpec_Consul{
-							Consul: &consulplugin.UpstreamSpec{
-								ServiceName:    "static-server",
-								ConnectEnabled: true,
-							},
-						},
-					},
-				}, {
-					Metadata: core.Metadata{
-						Name:      "static-client",
-						Namespace: "gloo-system",
-					},
-					UpstreamSpec: &gloo.UpstreamSpec{
-						UpstreamType: &gloo.UpstreamSpec_Consul{
-							Consul: &consulplugin.UpstreamSpec{
-								ServiceName:    "static-client",
-								ConnectEnabled: true,
-							},
-						},
-					},
-				},
+
+			getupstreamnames := func() ([]string, error) {
+				ul, err := upstreamClient.List("gloo-system", clients.ListOpts{})
+				if err != nil {
+					return nil, err
+				}
+				ups := []string{}
+				for _, up := range ul {
+					ups = append(ups, up.Metadata.Name)
+				}
+				return ups, nil
 			}
+
+			Eventually(getupstreamnames, "60s", "1s").Should(ContainElement("static-client"))
+			Eventually(getupstreamnames, "10s", "1s").Should(ContainElement("static-server"))
+
+			ups, err := upstreamClient.List("gloo-system", clients.ListOpts{})
+			Expect(err).NotTo(HaveOccurred())
+
 			syncSnapshot.Upstreams = gloo.UpstreamsByNamespace{
 				"gloo-system": ups,
 			}
