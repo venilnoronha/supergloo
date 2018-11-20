@@ -85,9 +85,9 @@ var _ = Describe("Consul Install and Encryption E2E", func() {
 	})
 
 	AfterEach(func() {
-		util.GetKubeClient().CoreV1().Namespaces().Delete("supergloo-system", &kubemeta.DeleteOptions{})
+		util.TerminateNamespaceBlocking("supergloo-system")
 		// delete gloo system to remove gloo resources like upstreams
-		util.GetKubeClient().CoreV1().Namespaces().Delete("gloo-system", &kubemeta.DeleteOptions{})
+		util.TerminateNamespaceBlocking("gloo-system")
 	})
 	AfterSuite(func() {
 		gexec.CleanupBuildArtifacts()
