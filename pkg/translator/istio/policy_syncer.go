@@ -208,6 +208,7 @@ func toIstio(p *v1.Policy) ([]*v1alpha1.ServiceRole, []*v1alpha1.ServiceRoleBind
 			},
 			Rules: []*v1alpha1.AccessRule{
 				{
+					Methods: []string{"*"},
 					Services: []string{
 						svcname(dest),
 					},
@@ -217,6 +218,7 @@ func toIstio(p *v1.Policy) ([]*v1alpha1.ServiceRole, []*v1alpha1.ServiceRoleBind
 		var subjects []*v1alpha1.Subject
 		for _, rule := range rules {
 			subjects = append(subjects, &v1alpha1.Subject{
+
 				Properties: map[string]string{
 					"source.principal": principalame(*rule.Source),
 				},
@@ -228,8 +230,10 @@ func toIstio(p *v1.Policy) ([]*v1alpha1.ServiceRole, []*v1alpha1.ServiceRoleBind
 				Name:      name,
 				Namespace: ns,
 			},
+
 			Subjects: subjects,
 			RoleRef: &v1alpha1.RoleRef{
+				Kind: "ServiceRole",
 				Name: sr.Metadata.Name,
 			},
 		}
