@@ -33,16 +33,39 @@ func RoutingRuleCmd(opts *options.Options) *cobra.Command {
 			fmt.Printf("Created routing rule [%v] in namespace [%v]\n", args[0], rrOpts.Namespace)
 		},
 	}
-	flags := cmd.Flags()
-	flags.StringVar(&rrOpts.Mesh, "mesh", "", "The mesh that will be the target for this rule")
-	flags.StringVarP(&rrOpts.Namespace, "namespace", "n", "default", "The namespace for this routing rule. Defaults to \"default\"")
-	flags.StringVar(&rrOpts.Sources, "sources", "", "Sources for this rule. Each entry consists of an upstream namespace and and upstream name, separated by a colon.")
-	flags.StringVar(&rrOpts.Destinations, "destinations", "", "Destinations for this rule. Same format as for 'sources'")
-	flags.BoolVar(&rrOpts.OverrideExisting, "override", false, "If set to \"true\", the command will override any existing routing rule that matches the given namespace and name")
-	rrOpts.Matchers = *flags.StringArrayP("matchers", "m", nil, "Matcher for this rule")
 
-	// The only required option is the target mesh
+	flags := cmd.Flags()
+
+	flags.StringVar(&rrOpts.Mesh,
+		"mesh",
+		"",
+		"The mesh that will be the target for this rule")
 	cmd.MarkFlagRequired("mesh")
+
+	flags.StringVarP(&rrOpts.Namespace,
+		"namespace", "n",
+		"default",
+		"The namespace for this routing rule. Defaults to \"default\"")
+
+	flags.StringVar(&rrOpts.Sources,
+		"sources",
+		"",
+		"Sources for this rule. Each entry consists of an upstream namespace and and upstream name, separated by a colon.")
+
+	flags.StringVar(&rrOpts.Destinations,
+		"destinations",
+		"",
+		"Destinations for this rule. Same format as for 'sources'")
+
+	flags.BoolVar(&rrOpts.OverrideExisting,
+		"override",
+		false,
+		"If set to \"true\", the command will override any existing routing rule that matches the given namespace and name")
+
+	rrOpts.Matchers = *flags.StringArrayP("matchers",
+		"m",
+		nil,
+		"Matcher for this rule")
 
 	return cmd
 }
