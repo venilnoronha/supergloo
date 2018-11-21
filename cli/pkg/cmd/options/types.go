@@ -85,8 +85,10 @@ type Create struct {
 type OptionsCache struct {
 	Namespaces  []string
 	KubeClient  *kubernetes.Clientset
-	NsResources map[string]NsResource
+	NsResources NsResourceMap
 }
+
+type NsResourceMap map[string]NsResource
 
 type NsResource struct {
 	Meshes  []string

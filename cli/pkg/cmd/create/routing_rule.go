@@ -13,6 +13,7 @@ import (
 	"github.com/solo-io/solo-kit/pkg/api/v1/clients"
 	"github.com/solo-io/solo-kit/pkg/api/v1/resources/core"
 	"github.com/solo-io/supergloo/cli/pkg/cmd/options"
+	"github.com/solo-io/supergloo/cli/pkg/meshutil"
 	glooV1 "github.com/solo-io/supergloo/pkg/api/external/gloo/v1"
 	superglooV1 "github.com/solo-io/supergloo/pkg/api/v1"
 	"github.com/spf13/cobra"
@@ -40,11 +41,10 @@ func RoutingRuleCmd(opts *options.Options) *cobra.Command {
 		"mesh",
 		"",
 		"The mesh that will be the target for this rule")
-	cmd.MarkFlagRequired("mesh")
 
 	flags.StringVarP(&rrOpts.Namespace,
 		"namespace", "n",
-		"default",
+		"",
 		"The namespace for this routing rule. Defaults to \"default\"")
 
 	flags.StringVar(&rrOpts.Sources,
@@ -74,6 +74,43 @@ func createRoutingRule(routeName string, opts *options.Options) error {
 	rrOpts := &(opts.Create).RoutingRule
 
 	// Ensure that the given mesh exists
+	if opts.Top.Static {
+		if rrOpts.Namespace == "" {
+			return fmt.Errorf("Please specify a mesh namespace")
+		}
+		if rrOpts.Mesh == "" {
+			return fmt.Errorf("Please specify a mesh")
+		}
+	}
+
+	if rrOpts.Namespace == "" {
+		// namespace, err := common.ChooseNamespace(opts, "Select a mesh namespace")
+		// if err != nil {
+		// 	return fmt.Errorf("input error")
+		// }
+		// rrOpts.Namespace = namespace
+	} else {
+		if !common.Contains(opts.Cache.Namespaces, rrOpts.Namespace) {
+			return fmt.Errorf("Please specify a valid mesh namespace. Namespace %v not found", rrOpts.Namespace)
+		}
+		if len(opts.Cache.NsResources[rrOpts.Namespace].Meshes) == 0 {
+			return fmt.Errorf("Please choose a namespace with meshes. Namespace %v contains no meshes.", rrOpts.Namespace)
+		}
+	}
+
+	if rrOpts.Mesh == "" {
+		mesh, namespace, err := meshutil.ChooseMesh(opts.Cache.NsResources)
+		if err != nil {
+			return fmt.Errorf("input error")
+		}
+		rrOpts.Mesh = mesh
+		rrOpts.Namespace = namespace
+	} else {
+		if !common.Contains(opts.Cache.NsResources[rrOpts.Namespace].Meshes, rrOpts.Mesh) {
+			return fmt.Errorf("Please specify a valid mesh name. Mesh %v not found in namespace %v not found", rrOpts.Mesh, rrOpts.Namespace)
+		}
+	}
+
 	meshClient, err := common.GetMeshClient()
 	if err != nil {
 		return err
