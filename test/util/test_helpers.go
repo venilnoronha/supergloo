@@ -32,6 +32,9 @@ import (
 
 	security "github.com/openshift/client-go/security/clientset/versioned"
 	client "k8s.io/apiextensions-apiserver/pkg/client/clientset/internalclientset/typed/apiextensions/internalversion"
+
+	// love me google.
+	_ "k8s.io/client-go/plugin/pkg/client/auth/gcp"
 )
 
 var kubeConfig *rest.Config
@@ -113,13 +116,12 @@ func WaitForAvailablePodsWithTimeout(namespace string, timeout string) {
 
 func waitForAvailablePodsWithTimeout(namespace, timeout string) {
 	client := GetKubeClient()
-	// smoke test that minikube is sane
-	_, err := client.CoreV1().Pods(namespace).List(kubemeta.ListOptions{Limit: 1})
-	ExpectWithOffset(2, err).NotTo(HaveOccurred())
 
-	EventuallyWithOffset(2, func() bool {
+	EventuallyWithOffset(2, func() (bool, error) {
 		podList, err := client.CoreV1().Pods(namespace).List(kubemeta.ListOptions{})
-		Expect(err).To(BeNil())
+		if err != nil {
+			return false, err
+		}
 		done := true
 		for _, pod := range podList.Items {
 			for _, condition := range pod.Status.Conditions {
@@ -131,7 +133,7 @@ func waitForAvailablePodsWithTimeout(namespace, timeout string) {
 				}
 			}
 		}
-		return done
+		return done, nil
 	}, timeout, "1s").Should(BeTrue())
 }
 
