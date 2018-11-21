@@ -47,7 +47,7 @@ func GetKubeConfig() *rest.Config {
 	}
 	kubeconfigPath := filepath.Join(os.Getenv("HOME"), ".kube", "config")
 	cfg, err := clientcmd.BuildConfigFromFlags("", kubeconfigPath)
-	Expect(err).NotTo(HaveOccurred())
+	ExpectWithOffset(1, err).NotTo(HaveOccurred())
 	kubeConfig = cfg
 	return cfg
 }
@@ -58,14 +58,14 @@ func GetKubeClient() *kubernetes.Clientset {
 	}
 	cfg := GetKubeConfig()
 	client, err := kubernetes.NewForConfig(cfg)
-	Expect(err).NotTo(HaveOccurred())
+	ExpectWithOffset(1, err).NotTo(HaveOccurred())
 	kubeClient = client
 	return client
 }
 
 func GetSecurityClient() *security.Clientset {
 	securityClient, err := security.NewForConfig(GetKubeConfig())
-	Expect(err).To(BeNil())
+	ExpectWithOffset(1, err).To(BeNil())
 	return securityClient
 }
 
@@ -73,9 +73,9 @@ func GetSecretClient() istiosecret.IstioCacertsSecretClient {
 	secretClient, err := istiosecret.NewIstioCacertsSecretClient(&factory.KubeSecretClientFactory{
 		Clientset: GetKubeClient(),
 	})
-	Expect(err).Should(BeNil())
+	ExpectWithOffset(1, err).Should(BeNil())
 	err = secretClient.Register()
-	Expect(err).Should(BeNil())
+	ExpectWithOffset(1, err).Should(BeNil())
 	return secretClient
 }
 
@@ -88,7 +88,7 @@ func TryCreateNamespace(namespace string) {
 	}
 	_, err := client.CoreV1().Namespaces().Create(resource)
 	if err != nil {
-		Expect(apierrors.IsAlreadyExists(err)).To(BeTrue())
+		ExpectWithOffset(1, apierrors.IsAlreadyExists(err)).To(BeTrue())
 	}
 }
 
@@ -100,15 +100,24 @@ func TerminateNamespaceBlocking(namespace string) {
 	}
 	client.CoreV1().Pods(namespace).DeleteCollection(deleteOptions, kubemeta.ListOptions{})
 	client.CoreV1().Namespaces().Delete(namespace, deleteOptions)
-	Eventually(func() error {
+	EventuallyWithOffset(1, func() error {
 		_, err := client.CoreV1().Namespaces().Get(namespace, kubemeta.GetOptions{})
 		return err
 	}, "120s", "1s").ShouldNot(BeNil()) // will be non-nil when NS is gone
 }
 
 func WaitForAvailablePodsWithTimeout(namespace string, timeout string) {
+	// use helper function so that stack offset is consistent
+	waitForAvailablePodsWithTimeout(namespace, timeout)
+}
+
+func waitForAvailablePodsWithTimeout(namespace, timeout string) {
 	client := GetKubeClient()
-	Eventually(func() bool {
+	// smoke test that minikube is sane
+	_, err := client.CoreV1().Pods(namespace).List(kubemeta.ListOptions{Limit: 1})
+	ExpectWithOffset(2, err).NotTo(HaveOccurred())
+
+	EventuallyWithOffset(2, func() bool {
 		podList, err := client.CoreV1().Pods(namespace).List(kubemeta.ListOptions{})
 		Expect(err).To(BeNil())
 		done := true
@@ -136,7 +145,7 @@ func WaitForDeletedPodsWithTimeout(namespace string, timeout string) {
 }
 
 func WaitForAvailablePods(namespace string) {
-	WaitForAvailablePodsWithTimeout(namespace, "120s")
+	waitForAvailablePodsWithTimeout(namespace, "120s")
 }
 
 func WaitForDeletedPods(namespace string) {
@@ -149,9 +158,9 @@ func GetMeshClient(kubeCache *kube.KubeCache) v1.MeshClient {
 		Cfg:         GetKubeConfig(),
 		SharedCache: kubeCache,
 	})
-	Expect(err).Should(BeNil())
+	ExpectWithOffset(1, err).Should(BeNil())
 	err = meshClient.Register()
-	Expect(err).Should(BeNil())
+	ExpectWithOffset(1, err).Should(BeNil())
 	return meshClient
 }
 
@@ -161,9 +170,9 @@ func GetUpstreamClient(kubeCache *kube.KubeCache) gloo.UpstreamClient {
 		Cfg:         GetKubeConfig(),
 		SharedCache: kubeCache,
 	})
-	Expect(err).Should(BeNil())
+	ExpectWithOffset(1, err).Should(BeNil())
 	err = upstreamClient.Register()
-	Expect(err).Should(BeNil())
+	ExpectWithOffset(1, err).Should(BeNil())
 	return upstreamClient
 }
 
@@ -175,7 +184,7 @@ func DeleteCrb(crbName string) {
 func DeleteWebhookConfigIfExists(webhookName string) {
 	client := GetKubeClient()
 	hooks, err := client.AdmissionregistrationV1beta1().MutatingWebhookConfigurations().List(kubemeta.ListOptions{})
-	Expect(err).NotTo(HaveOccurred())
+	ExpectWithOffset(1, err).NotTo(HaveOccurred())
 	for _, hook := range hooks.Items {
 		if strings.HasSuffix(hook.Name, webhookName) {
 			client.AdmissionregistrationV1beta1().MutatingWebhookConfigurations().Delete(hook.Name, &kubemeta.DeleteOptions{})
@@ -187,14 +196,14 @@ func DeleteWebhookConfigIfExists(webhookName string) {
 func GetConsulServerPodName(namespace string) string {
 	client := GetKubeClient()
 	podList, err := client.CoreV1().Pods(namespace).List(kubemeta.ListOptions{})
-	Expect(err).NotTo(HaveOccurred())
+	ExpectWithOffset(1, err).NotTo(HaveOccurred())
 	for _, pod := range podList.Items {
 		if strings.Contains(pod.Name, "consul-mesh-server-0") {
 			return pod.Name
 		}
 	}
 	// Should not have happened
-	Expect(false).To(BeTrue())
+	ExpectWithOffset(1, false).To(BeTrue())
 	return ""
 }
 
@@ -218,7 +227,7 @@ func CreateTestSecret(namespace string, name string) (*istiosecret.IstioCacertsS
 	}
 	GetSecretClient().Delete(namespace, name, clients.DeleteOpts{})
 	_, err := GetSecretClient().Write(secret, clients.WriteOpts{})
-	Expect(err).NotTo(HaveOccurred())
+	ExpectWithOffset(1, err).NotTo(HaveOccurred())
 	ref := &core.ResourceRef{
 		Namespace: namespace,
 		Name:      name,
@@ -231,22 +240,22 @@ func CheckCertMatchesConsul(consulTunnelPort int, rootCert string) {
 		Address: fmt.Sprintf("127.0.0.1:%d", consulTunnelPort),
 	}
 	client, err := api.NewClient(config)
-	Expect(err).NotTo(HaveOccurred())
+	ExpectWithOffset(1, err).NotTo(HaveOccurred())
 	var queryOpts api.QueryOptions
 	currentConfig, _, err := client.Connect().CAGetConfig(&queryOpts)
-	Expect(err).NotTo(HaveOccurred())
+	ExpectWithOffset(1, err).NotTo(HaveOccurred())
 
 	currentRoot := currentConfig.Config["RootCert"]
-	Expect(currentRoot).To(BeEquivalentTo(rootCert))
+	ExpectWithOffset(1, currentRoot).To(BeEquivalentTo(rootCert))
 }
 
 func CheckCertMatchesIstio(installNamespace string) {
 	actual, err := GetSecretClient().Read(installNamespace, istioSync.CustomRootCertificateSecretName, clients.ReadOpts{})
-	Expect(err).NotTo(HaveOccurred())
-	Expect(actual.RootCert).Should(BeEquivalentTo(TestRoot))
-	Expect(actual.CaCert).Should(BeEquivalentTo(TestRoot))
-	Expect(actual.CaKey).Should(BeEquivalentTo(testKey))
-	Expect(actual.CertChain).Should(BeEquivalentTo(testCertChain))
+	ExpectWithOffset(1, err).NotTo(HaveOccurred())
+	ExpectWithOffset(1, actual.RootCert).Should(BeEquivalentTo(TestRoot))
+	ExpectWithOffset(1, actual.CaCert).Should(BeEquivalentTo(TestRoot))
+	ExpectWithOffset(1, actual.CaKey).Should(BeEquivalentTo(testKey))
+	ExpectWithOffset(1, actual.CertChain).Should(BeEquivalentTo(testCertChain))
 }
 
 func UninstallHelmRelease(releaseName string) error {
