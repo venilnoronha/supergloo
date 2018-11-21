@@ -28,12 +28,19 @@ func InitCache(opts *options.Options) error {
 	opts.Cache.Namespaces = namespaces
 
 	// Get key resources by ns
+	//   1. gather clients
 	meshClient, err := common.GetMeshClient()
 	if err != nil {
 		return err
 	}
+	secretClient, err := common.GetSecretClient()
+	if err != nil {
+		return err
+	}
+	//   2. get client resources for each namespace
 	opts.Cache.NsResources = make(map[string]options.NsResource)
 	for _, ns := range namespaces {
+		// 2.a meshes
 		meshList, err := (*meshClient).List(ns, clients.ListOpts{})
 		if err != nil {
 			return err
@@ -42,8 +49,19 @@ func InitCache(opts *options.Options) error {
 		for _, m := range meshList {
 			meshes = append(meshes, m.Metadata.Name)
 		}
+		// 2.b secrets
+		secretList, err := (*secretClient).List(ns, clients.ListOpts{})
+		if err != nil {
+			return err
+		}
+		var secrets = []string{}
+		for _, m := range secretList {
+			secrets = append(secrets, m.Metadata.Name)
+		}
+
 		opts.Cache.NsResources[ns] = options.NsResource{
-			Meshes: meshes,
+			Meshes:  meshes,
+			Secrets: secrets,
 		}
 	}
 

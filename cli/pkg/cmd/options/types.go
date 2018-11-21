@@ -89,5 +89,6 @@ type OptionsCache struct {
 }
 
 type NsResource struct {
-	Meshes []string
+	Meshes  []string
+	Secrets []string
 }
