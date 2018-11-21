@@ -174,14 +174,16 @@ var _ = Describe("Istio Install and Encryption E2E", func() {
 			bookinfons string
 		)
 		BeforeEach(func() {
-			bookinfons = "bookinfo"
-
+			// TODO: change this to something random once we fix discovery
+			// to work with labeled namespaces
+			bookinfons = "default"
 		})
 
 		AfterEach(func() {
 			gexec.TerminateAndWait(2 * time.Second)
-
-			util.TerminateNamespaceBlocking(bookinfons)
+			if bookinfons != "default" {
+				util.TerminateNamespaceBlocking(bookinfons)
+			}
 		})
 
 		deployBookInfo := func() string {
@@ -199,6 +201,8 @@ var _ = Describe("Istio Install and Encryption E2E", func() {
 			bookinfo := "https://raw.githubusercontent.com/istio/istio/4c0a001b5e542d43b4c66ae75c1f41f2c1ff183e/samples/bookinfo/platform/kube/bookinfo.yaml"
 			kubectlargs := []string{"apply", "-n", bookinfons, "-f", bookinfo}
 			cmd := exec.Command("kubectl", kubectlargs...)
+			cmd.Stdout = GinkgoWriter
+			cmd.Stderr = GinkgoWriter
 			err := cmd.Run()
 			Expect(err).NotTo(HaveOccurred())
 
@@ -206,17 +210,18 @@ var _ = Describe("Istio Install and Encryption E2E", func() {
 		}
 
 		It("Should install istio and enable policy", func() {
+
+			// start discovery
+			cmd := exec.Command(PathToUds, "-udsonly")
+			_, err := gexec.Start(cmd, GinkgoWriter, GinkgoWriter)
+
 			snap := getSnapshot(true, nil)
-			err := installSyncer.Sync(context.TODO(), snap)
+			err = installSyncer.Sync(context.TODO(), snap)
 			Expect(err).NotTo(HaveOccurred())
 			util.WaitForAvailablePodsWithTimeout(installNamespace, "300s")
 
 			deployBookInfo()
 			util.WaitForAvailablePodsWithTimeout(bookinfons, "500s")
-
-			// start discovery
-			cmd := exec.Command(PathToUds, "-udsonly")
-			_, err = gexec.Start(cmd, GinkgoWriter, GinkgoWriter)
 
 			mesh, err := meshClient.Read(superglooNamespace, meshName, clients.ReadOpts{})
 			Expect(err).NotTo(HaveOccurred())
@@ -225,11 +230,11 @@ var _ = Describe("Istio Install and Encryption E2E", func() {
 				Rules: []*v1.Rule{
 					{
 						Source: &core.ResourceRef{
-							Name:      "static-client",
+							Name:      "default-reviews-9080",
 							Namespace: "gloo-system",
 						},
 						Destination: &core.ResourceRef{
-							Name:      "static-server",
+							Name:      "default-ratings-9080",
 							Namespace: "gloo-system",
 						},
 					},
@@ -242,7 +247,6 @@ var _ = Describe("Istio Install and Encryption E2E", func() {
 			getupstreamnames := func() ([]string, error) {
 				return util.GetUpstreamNames(upstreamClient)
 			}
-
 			Eventually(getupstreamnames, "60s", "1s").ShouldNot(HaveLen(0))
 
 			syncSnapshot := getTranslatorSnapshot(mesh, nil)
@@ -254,7 +258,6 @@ var _ = Describe("Istio Install and Encryption E2E", func() {
 
 			err = meshSyncer.Sync(context.TODO(), syncSnapshot)
 			Expect(err).NotTo(HaveOccurred())
-			time.Sleep(time.Hour)
 		})
 	})
 })
