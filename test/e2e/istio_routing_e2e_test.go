@@ -9,7 +9,6 @@ import (
 	"github.com/solo-io/solo-kit/pkg/api/v1/clients/kube"
 	"github.com/solo-io/solo-kit/pkg/api/v1/resources/core"
 	"github.com/solo-io/solo-kit/pkg/utils/kubeutils"
-	"github.com/solo-io/supergloo/pkg/api/external/istio/networking/v1alpha3"
 	"github.com/solo-io/supergloo/pkg/api/v1"
 	"github.com/solo-io/supergloo/pkg/setup"
 	"time"
@@ -29,6 +28,9 @@ var _ = FDescribe("istio routing E2e", func() {
 					WatchNamespaces: []string{"default"},
 				},
 			},
+			Encryption: &v1.Encryption{
+				TlsEnabled: true,
+			},
 			//Encryption: &v1.Encryption{TlsEnabled: true},
 		}, clients.WriteOpts{})
 		Expect(err).NotTo(HaveOccurred())
@@ -38,14 +40,21 @@ var _ = FDescribe("istio routing E2e", func() {
 
 		ref := m1.Metadata.Ref()
 		rr1, err := routingRules.Write(&v1.RoutingRule{
-			Metadata: rrMeta,
+			Metadata:   rrMeta,
 			TargetMesh: &ref,
-			FaultInjection: &v1alpha3.HTTPFaultInjection{
-				Abort: &v1alpha3.HTTPFaultInjection_Abort{
-					ErrorType: &v1alpha3.HTTPFaultInjection_Abort_HttpStatus{
-						HttpStatus: 566,
+			Destinations: []*core.ResourceRef{{
+				Name:      "default-reviews-9080",
+				Namespace: "gloo-system",
+			}},
+			TrafficShifting: &v1.TrafficShifting{
+				Destinations: []*v1.WeightedDestination{
+					{
+						Upstream: &core.ResourceRef{
+							Name:      "default-reviews-v1-9080",
+							Namespace: "gloo-system",
+						},
+						Weight: 100,
 					},
-					Percent: 100,
 				},
 			},
 		}, clients.WriteOpts{})

@@ -283,8 +283,8 @@ func virtualServiceForHost(host string, rules v1.RoutingRuleList, mesh *v1.Mesh,
 				Host: host,
 			},
 		}}
-		if rule.TrafficShifting != nil && len(rule.TrafficShifting.Destinations) == 0 {
-			route, err = createIstioRoute(rule.TrafficShifting.Destinations, upstreams)
+		if rule.TrafficShifting != nil && len(rule.TrafficShifting.Destinations) > 0 {
+			route, err = createLoadBalancedRoute(rule.TrafficShifting.Destinations, upstreams)
 			if err != nil {
 				return nil, errors.Wrapf(err, "creating multi destination route")
 			}
@@ -428,7 +428,7 @@ func convertMatcher(sourceSelector map[string]string, match *gloov1.Matcher) *v1
 	}
 }
 
-func createIstioRoute(destinations []*v1.WeightedDestination, upstreams gloov1.UpstreamList) ([]*v1alpha3.DestinationWeight, error) {
+func createLoadBalancedRoute(destinations []*v1.WeightedDestination, upstreams gloov1.UpstreamList) ([]*v1alpha3.DestinationWeight, error) {
 	var istioDestinations []*v1alpha3.DestinationWeight
 	for _, dest := range destinations {
 		upstream, err := upstreams.Find(dest.Upstream.Strings())
