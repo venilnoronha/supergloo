@@ -88,7 +88,7 @@ type OptionsCache struct {
 	NsResources NsResourceMap
 }
 
-type NsResourceMap map[string]NsResource
+type NsResourceMap map[string]*NsResource
 
 type NsResource struct {
 	Meshes  []string

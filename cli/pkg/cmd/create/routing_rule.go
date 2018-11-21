@@ -6,8 +6,6 @@ import (
 
 	"github.com/solo-io/supergloo/cli/pkg/common"
 
-	"github.com/solo-io/supergloo/pkg/constants"
-
 	"github.com/solo-io/solo-kit/pkg/errors"
 
 	"github.com/solo-io/solo-kit/pkg/api/v1/clients"
@@ -93,7 +91,7 @@ func createRoutingRule(routeName string, opts *options.Options) error {
 	}
 
 	if rrOpts.Mesh == "" {
-		// Q(mitchdraft) do we want to prefilter this by namespace if they have chosen one?
+		// Q(mitchdraft)jdo we want to prefilter this by namespace if they have chosen one?
 		mesh, namespace, err := meshutil.ChooseMesh(opts.Cache.NsResources)
 		if err != nil {
 			return fmt.Errorf("input error")
@@ -141,8 +139,8 @@ func createRoutingRule(routeName string, opts *options.Options) error {
 			Namespace: rrOpts.Namespace,
 		},
 		TargetMesh: &core.ResourceRef{
-			Name:      mesh.Metadata.Name,
-			Namespace: mesh.Metadata.Namespace,
+			Name:      rrOpts.Mesh,
+			Namespace: rrOpts.Namespace,
 		},
 		Sources:         toResourceRefs(sources),
 		Destinations:    toResourceRefs(destinations),
