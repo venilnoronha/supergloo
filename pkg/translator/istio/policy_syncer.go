@@ -13,9 +13,12 @@ import (
 	"github.com/solo-io/solo-kit/pkg/api/v1/resources/core"
 	gloov1 "github.com/solo-io/supergloo/pkg/api/external/gloo/v1"
 	glookubev1 "github.com/solo-io/supergloo/pkg/api/external/gloo/v1/plugins/kubernetes"
+	kubemeta "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/labels"
 
 	"github.com/solo-io/solo-kit/pkg/api/v1/clients/factory"
 	"github.com/solo-io/solo-kit/pkg/api/v1/clients/kube"
+	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 
 	"github.com/solo-io/supergloo/pkg/api/external/istio/rbac/v1alpha1"
@@ -29,6 +32,8 @@ type PolicySyncer struct {
 	serviceRoleBindingReconciler v1alpha1.ServiceRoleBindingReconciler
 	serviceRoleReconciler        v1alpha1.ServiceRoleReconciler
 	rbacConfigReconciler         v1alpha1.RbacConfigReconciler
+
+	kubeClient *kubernetes.Clientset
 }
 
 func NewPolicySyncer(writens string, kubeCache *kube.KubeCache, restConfig *rest.Config) (*PolicySyncer, error) {
@@ -73,6 +78,11 @@ func NewPolicySyncer(writens string, kubeCache *kube.KubeCache, restConfig *rest
 		return nil, err
 	}
 	ps.rbacConfigReconciler = v1alpha1.NewRbacConfigReconciler(rbacConfigClient)
+
+	ps.kubeClient, err = kubernetes.NewForConfig(restConfig)
+	if err != nil {
+		return nil, err
+	}
 
 	return &ps, nil
 
@@ -139,7 +149,7 @@ func (s *PolicySyncer) syncPolicy(ctx context.Context, upstreams gloov1.Upstream
 	rcfg := s.globalConfig()
 	var rcfgs v1alpha1.RbacConfigList
 	rcfgs = append(rcfgs, rcfg)
-	converter := convertToIstio{upstreams, p}
+	converter := convertToIstio{upstreams, p, s.kubeClient}
 	sr, srb := converter.toIstio()
 
 	resources.UpdateMetadata(rcfg, s.updateMetadata)
@@ -179,8 +189,9 @@ func (s *PolicySyncer) globalConfig() *v1alpha1.RbacConfig {
 }
 
 type convertToIstio struct {
-	upstreams gloov1.UpstreamsByNamespace
-	policy    *v1.Policy
+	upstreams  gloov1.UpstreamsByNamespace
+	policy     *v1.Policy
+	kubeClient *kubernetes.Clientset
 }
 
 func (c *convertToIstio) toIstio() ([]*v1alpha1.ServiceRole, []*v1alpha1.ServiceRoleBinding) {
@@ -241,13 +252,15 @@ func (c *convertToIstio) toIstio() ([]*v1alpha1.ServiceRole, []*v1alpha1.Service
 			if sourceupstream == nil {
 				continue
 			}
-			var sourceref core.ResourceRef
-			sourceref.Name = sourceupstream.ServiceName
-			sourceref.Namespace = sourceupstream.ServiceNamespace
+
+			sa := c.getsvcaccount(sourceupstream)
+			if sa == nil {
+				continue
+			}
 
 			subjects = append(subjects, &v1alpha1.Subject{
 				Properties: map[string]string{
-					"source.principal": c.principalame(sourceref),
+					"source.principal": c.principalame(*sa),
 				},
 			})
 		}
@@ -268,6 +281,40 @@ func (c *convertToIstio) toIstio() ([]*v1alpha1.ServiceRole, []*v1alpha1.Service
 		bindings = append(bindings, srb)
 	}
 	return roles, bindings
+}
+
+func (c *convertToIstio) getsvcaccount(k *glookubev1.UpstreamSpec) *core.ResourceRef {
+	// istio manages identity in the level of service accounts.
+	// so we hueristicly figure out the service account for this upstream.
+	// we may consider changing our API in the future to better support this usecase
+
+	svcname := k.ServiceName
+	svcnamespace := k.ServiceNamespace
+
+	// find the services and get the selectors, and
+	svc, err := c.kubeClient.CoreV1().Services(svcnamespace).Get(svcname, kubemeta.GetOptions{})
+	if err != nil {
+		return nil
+	}
+	// get the pods from the selector
+	// get the first pod and grab its service account
+	opts := kubemeta.ListOptions{
+		LabelSelector: labels.SelectorFromSet(svc.Spec.Selector).String(),
+		Limit:         1,
+	}
+	pods, err := c.kubeClient.CoreV1().Pods(svcnamespace).List(opts)
+	if err != nil {
+		return nil
+	}
+
+	if len(pods.Items) == 0 {
+		return nil
+	}
+	saname := pods.Items[0].Spec.ServiceAccountName
+	return &core.ResourceRef{
+		Name:      saname,
+		Namespace: svcnamespace,
+	}
 }
 
 func (c *convertToIstio) getkube(ref core.ResourceRef) *glookubev1.UpstreamSpec {
