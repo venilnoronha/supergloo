@@ -276,3 +276,15 @@ func TryDeleteIstioCrds() {
 		}
 	}
 }
+
+func GetUpstreamNames(upstreamClient gloo.UpstreamClient) ([]string, error) {
+	ul, err := upstreamClient.List("gloo-system", clients.ListOpts{})
+	if err != nil {
+		return nil, err
+	}
+	ups := []string{}
+	for _, up := range ul {
+		ups = append(ups, up.Metadata.Name)
+	}
+	return ups, nil
+}

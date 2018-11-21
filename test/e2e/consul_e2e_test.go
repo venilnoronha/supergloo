@@ -305,15 +305,7 @@ var _ = FDescribe("Consul Install and Encryption E2E", func() {
 			syncSnapshot := getTranslatorSnapshot(mesh, nil)
 
 			getupstreamnames := func() ([]string, error) {
-				ul, err := upstreamClient.List("gloo-system", clients.ListOpts{})
-				if err != nil {
-					return nil, err
-				}
-				ups := []string{}
-				for _, up := range ul {
-					ups = append(ups, up.Metadata.Name)
-				}
-				return ups, nil
+				return util.GetUpstreamNames(upstreamClient)
 			}
 
 			Eventually(getupstreamnames, "60s", "1s").Should(ContainElement("static-client"))

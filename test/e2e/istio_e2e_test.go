@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"os/exec"
+	"time"
 
 	"github.com/solo-io/supergloo/pkg/install/istio"
 	kubecore "k8s.io/api/core/v1"
@@ -14,10 +15,12 @@ import (
 	istiosecret "github.com/solo-io/supergloo/pkg/api/external/istio/encryption/v1"
 	"github.com/solo-io/supergloo/test/util"
 
+	gloo "github.com/solo-io/supergloo/pkg/api/external/gloo/v1"
 	"github.com/solo-io/solo-kit/pkg/api/v1/clients"
 
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
+	"github.com/onsi/gomega/gexec"
 	"github.com/solo-io/solo-kit/pkg/api/v1/clients/kube"
 	"github.com/solo-io/solo-kit/pkg/api/v1/resources/core"
 	"github.com/solo-io/supergloo/pkg/api/v1"
@@ -91,6 +94,8 @@ var _ = Describe("Istio Install and Encryption E2E", func() {
 	}
 
 	var meshClient v1.MeshClient
+	var	upstreamClient gloo.UpstreamClient
+
 	var secretClient istiosecret.IstioCacertsSecretClient
 	var installSyncer install.InstallSyncer
 
@@ -98,6 +103,8 @@ var _ = Describe("Istio Install and Encryption E2E", func() {
 		util.TryCreateNamespace("supergloo-system")
 		util.TryCreateNamespace("gloo-system")
 		meshClient = util.GetMeshClient(kubeCache)
+		upstreamClient = util.GetUpstreamClient(kubeCache)
+
 		secretClient = util.GetSecretClient()
 		installSyncer = install.InstallSyncer{
 			Kube:       util.GetKubeClient(),
@@ -172,6 +179,8 @@ var _ = Describe("Istio Install and Encryption E2E", func() {
 		})
 
 		AfterEach(func() {
+			gexec.TerminateAndWait(2 * time.Second)
+
 			util.TerminateNamespaceBlocking(bookinfons)
 		})
 
@@ -180,6 +189,9 @@ var _ = Describe("Istio Install and Encryption E2E", func() {
 			ns := &kubecore.Namespace{
 				ObjectMeta: kubemeta.ObjectMeta{
 					Name: bookinfons,
+					Labels: map[string]string{
+						"istio-injection": "enabled",
+					},
 				},
 			}
 			util.GetKubeClient().CoreV1().Namespaces().Create(ns)
@@ -194,7 +206,7 @@ var _ = Describe("Istio Install and Encryption E2E", func() {
 			return bookinfons
 		}
 
-		It("Should install istio and enable policy", func() {
+		FIt("Should install istio and enable policy", func() {
 			snap := getSnapshot(true, nil)
 			err := installSyncer.Sync(context.TODO(), snap)
 			Expect(err).NotTo(HaveOccurred())
@@ -202,6 +214,10 @@ var _ = Describe("Istio Install and Encryption E2E", func() {
 
 			deployBookInfo()
 			util.WaitForAvailablePods(bookinfons)
+
+			// start discovery
+			cmd := exec.Command(PathToUds, "-udsonly")
+			_, err = gexec.Start(cmd, GinkgoWriter, GinkgoWriter)
 
 			mesh, err := meshClient.Read(superglooNamespace, meshName, clients.ReadOpts{})
 			Expect(err).NotTo(HaveOccurred())
@@ -224,10 +240,22 @@ var _ = Describe("Istio Install and Encryption E2E", func() {
 			meshSyncer, err := istioSync.NewPolicySyncer("supergloo-system", kubeCache, util.GetKubeConfig())
 			Expect(err).NotTo(HaveOccurred())
 
+			getupstreamnames := func() ([]string, error) {
+				return util.GetUpstreamNames(upstreamClient)
+			}
+
+			Eventually(getupstreamnames, "60s", "1s").ShouldNot(HaveLen(0))
+
 			syncSnapshot := getTranslatorSnapshot(mesh, nil)
+			ups, err := upstreamClient.List("gloo-system", clients.ListOpts{})
+			Expect(err).NotTo(HaveOccurred())
+			syncSnapshot.Upstreams =  gloo.UpstreamsByNamespace{
+				"gloo-system": ups,
+			}
 
 			err = meshSyncer.Sync(context.TODO(), syncSnapshot)
 			Expect(err).NotTo(HaveOccurred())
+			time.Sleep(time.Hour)
 		})
 	})
 })
