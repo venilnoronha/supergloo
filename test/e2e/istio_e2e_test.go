@@ -3,8 +3,11 @@ package e2e
 import (
 	"context"
 	"os"
+	"os/exec"
 
 	"github.com/solo-io/supergloo/pkg/install/istio"
+	kubecore "k8s.io/api/core/v1"
+	kubemeta "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"github.com/solo-io/supergloo/pkg/install"
 
@@ -34,7 +37,7 @@ var _ = Describe("Istio Install and Encryption E2E", func() {
 	kubeCache := kube.NewKubeCache()
 	path := os.Getenv("HELM_CHART_PATH")
 	if path == "" {
-		Skip("Set environment variable HELM_CHART_PATH")
+		path = "https://s3.amazonaws.com/supergloo.solo.io/istio-1.0.3.tgz"
 	}
 
 	getSnapshot := func(mtls bool, secret *core.ResourceRef) *v1.InstallSnapshot {
@@ -129,8 +132,6 @@ var _ = Describe("Istio Install and Encryption E2E", func() {
 		mesh, err := meshClient.Read(superglooNamespace, meshName, clients.ReadOpts{})
 		Expect(err).NotTo(HaveOccurred())
 
-		Expect(err).NotTo(HaveOccurred())
-
 		meshSyncer := istioSync.EncryptionSyncer{
 			Kube:           util.GetKubeClient(),
 			SecretClient:   secretClient,
@@ -160,4 +161,73 @@ var _ = Describe("Istio Install and Encryption E2E", func() {
 		Expect(err).NotTo(HaveOccurred())
 	})
 
+	Describe("istio + policy", func() {
+
+		var (
+			bookinfons string
+		)
+		BeforeEach(func() {
+			bookinfons = "bookinfo"
+
+		})
+
+		AfterEach(func() {
+			util.TerminateNamespaceBlocking(bookinfons)
+		})
+
+		deployBookInfo := func() string {
+			// create namespace for bookinfo
+			ns := &kubecore.Namespace{
+				ObjectMeta: kubemeta.ObjectMeta{
+					Name: bookinfons,
+				},
+			}
+			util.GetKubeClient().CoreV1().Namespaces().Create(ns)
+
+			bookinfo := "https://raw.githubusercontent.com/istio/istio/4c0a001b5e542d43b4c66ae75c1f41f2c1ff183e/samples/bookinfo/platform/kube/bookinfo.yaml"
+			kubectlargs := []string{"apply", "-n", bookinfons, "-f", bookinfo}
+			cmd := exec.Command("kubectl", kubectlargs...)
+			err := cmd.Run()
+			Expect(err).NotTo(HaveOccurred())
+
+			util.WaitForAvailablePods(bookinfons)
+			return bookinfons
+		}
+
+		It("Should install istio and enable policy", func() {
+			snap := getSnapshot(true, nil)
+			err := installSyncer.Sync(context.TODO(), snap)
+			Expect(err).NotTo(HaveOccurred())
+			util.WaitForAvailablePods(installNamespace)
+
+			deployBookInfo()
+			util.WaitForAvailablePods(bookinfons)
+
+			mesh, err := meshClient.Read(superglooNamespace, meshName, clients.ReadOpts{})
+			Expect(err).NotTo(HaveOccurred())
+
+			mesh.Policy = &v1.Policy{
+				Rules: []*v1.Rule{
+					{
+						Source: &core.ResourceRef{
+							Name:      "static-client",
+							Namespace: "gloo-system",
+						},
+						Destination: &core.ResourceRef{
+							Name:      "static-server",
+							Namespace: "gloo-system",
+						},
+					},
+				},
+			}
+
+			meshSyncer, err := istioSync.NewPolicySyncer("supergloo-system", kubeCache, util.GetKubeConfig())
+			Expect(err).NotTo(HaveOccurred())
+
+			syncSnapshot := getTranslatorSnapshot(mesh, nil)
+
+			err = meshSyncer.Sync(context.TODO(), syncSnapshot)
+			Expect(err).NotTo(HaveOccurred())
+		})
+	})
 })
