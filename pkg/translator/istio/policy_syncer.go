@@ -11,6 +11,8 @@ import (
 	"github.com/solo-io/solo-kit/pkg/api/v1/clients"
 	"github.com/solo-io/solo-kit/pkg/api/v1/resources"
 	"github.com/solo-io/solo-kit/pkg/api/v1/resources/core"
+	gloov1 "github.com/solo-io/supergloo/pkg/api/external/gloo/v1"
+	glookubev1 "github.com/solo-io/supergloo/pkg/api/external/gloo/v1/plugins/kubernetes"
 
 	"github.com/solo-io/solo-kit/pkg/api/v1/clients/factory"
 	"github.com/solo-io/solo-kit/pkg/api/v1/clients/kube"
@@ -94,7 +96,7 @@ func (s *PolicySyncer) Sync(ctx context.Context, snap *v1.TranslatorSnapshot) er
 			continue
 		}
 
-		err := s.syncPolicy(ctx, policy)
+		err := s.syncPolicy(ctx, snap.Upstreams, policy)
 		if err != nil {
 			multiErr = multierror.Append(multiErr, err)
 		}
@@ -125,21 +127,20 @@ func (s *PolicySyncer) removePolicy(ctx context.Context) error {
 	}
 
 	return nil
-
 }
 
-func (s *PolicySyncer) syncPolicy(ctx context.Context, p *v1.Policy) error {
+func (s *PolicySyncer) syncPolicy(ctx context.Context, upstreams gloov1.UpstreamsByNamespace, p *v1.Policy) error {
 	opts := clients.ListOpts{
 		Ctx:      ctx,
 		Selector: s.WriteSelector,
 	}
 
 	// we have a policy, write a global config
-	rcfg := globalConfig()
+	rcfg := s.globalConfig()
 	var rcfgs v1alpha1.RbacConfigList
 	rcfgs = append(rcfgs, rcfg)
-
-	sr, srb := toIstio(p)
+	converter := convertToIstio{upstreams, p}
+	sr, srb := converter.toIstio()
 
 	resources.UpdateMetadata(rcfg, s.updateMetadata)
 	for _, res := range sr {
@@ -165,19 +166,29 @@ func (s *PolicySyncer) syncPolicy(ctx context.Context, p *v1.Policy) error {
 
 }
 
-func globalConfig() *v1alpha1.RbacConfig {
+func (s *PolicySyncer) globalConfig() *v1alpha1.RbacConfig {
 	return &v1alpha1.RbacConfig{
+		Metadata: core.Metadata{
+			// name MUST be default.
+			Name:      "default",
+			Namespace: s.WriteNamespace,
+		},
 		Mode:            v1alpha1.RbacConfig_ON,
 		EnforcementMode: v1alpha1.EnforcementMode_ENFORCED,
 	}
 }
 
-func toIstio(p *v1.Policy) ([]*v1alpha1.ServiceRole, []*v1alpha1.ServiceRoleBinding) {
+type convertToIstio struct {
+	upstreams gloov1.UpstreamsByNamespace
+	policy    *v1.Policy
+}
+
+func (c *convertToIstio) toIstio() ([]*v1alpha1.ServiceRole, []*v1alpha1.ServiceRoleBinding) {
 	var roles []*v1alpha1.ServiceRole
 	var bindings []*v1alpha1.ServiceRoleBinding
 
 	rulesByDest := map[core.ResourceRef][]*v1.Rule{}
-	for _, rule := range p.Rules {
+	for _, rule := range c.policy.Rules {
 		if rule.Source == nil {
 			// TODO: should we return error instead?
 			continue
@@ -189,7 +200,7 @@ func toIstio(p *v1.Policy) ([]*v1alpha1.ServiceRole, []*v1alpha1.ServiceRoleBind
 		rulesByDest[*rule.Destination] = append(rulesByDest[*rule.Destination], rule)
 	}
 	// sort for idempotency
-	for _, rule := range p.Rules {
+	for _, rule := range c.policy.Rules {
 		dests := rulesByDest[*rule.Destination]
 		sort.Slice(dests, func(i, j int) bool {
 			return dests[i].Source.String() > dests[j].Source.String()
@@ -197,6 +208,15 @@ func toIstio(p *v1.Policy) ([]*v1alpha1.ServiceRole, []*v1alpha1.ServiceRoleBind
 	}
 
 	for dest, rules := range rulesByDest {
+
+		destupstream := c.getkube(dest)
+		if destupstream == nil {
+			continue
+		}
+		var destref core.ResourceRef
+		destref.Name = destupstream.ServiceName
+		destref.Namespace = destupstream.ServiceNamespace
+
 		ns := dest.Namespace
 		// create an istio service role and binding:
 		name := "access-" + dest.Namespace + "-" + dest.Name
@@ -210,17 +230,24 @@ func toIstio(p *v1.Policy) ([]*v1alpha1.ServiceRole, []*v1alpha1.ServiceRoleBind
 				{
 					Methods: []string{"*"},
 					Services: []string{
-						svcname(dest),
+						c.svcname(destref),
 					},
 				},
 			},
 		}
 		var subjects []*v1alpha1.Subject
 		for _, rule := range rules {
-			subjects = append(subjects, &v1alpha1.Subject{
+			sourceupstream := c.getkube(*rule.Source)
+			if sourceupstream == nil {
+				continue
+			}
+			var sourceref core.ResourceRef
+			sourceref.Name = sourceupstream.ServiceName
+			sourceref.Namespace = sourceupstream.ServiceNamespace
 
+			subjects = append(subjects, &v1alpha1.Subject{
 				Properties: map[string]string{
-					"source.principal": principalame(*rule.Source),
+					"source.principal": c.principalame(sourceref),
 				},
 			})
 		}
@@ -243,6 +270,25 @@ func toIstio(p *v1.Policy) ([]*v1alpha1.ServiceRole, []*v1alpha1.ServiceRoleBind
 	return roles, bindings
 }
 
+func (c *convertToIstio) getkube(ref core.ResourceRef) *glookubev1.UpstreamSpec {
+	upstream, err := c.upstreams.List().Find(ref.Namespace, ref.Name)
+	if err != nil {
+		return nil
+	}
+	kubeupstream, ok := upstream.UpstreamSpec.UpstreamType.(*gloov1.UpstreamSpec_Kube)
+	if !ok {
+		return nil
+	}
+	return kubeupstream.Kube
+}
+
+func (c *convertToIstio) svcname(s core.ResourceRef) string {
+	return fmt.Sprintf("%s.%s.svc.cluster.local", s.Name, s.Namespace)
+}
+func (c *convertToIstio) principalame(s core.ResourceRef) string {
+	return fmt.Sprintf("cluster.local/ns/%s/sa/%s", s.Namespace, s.Name)
+}
+
 func (s *PolicySyncer) updateMetadata(meta *core.Metadata) {
 	meta.Namespace = s.WriteNamespace
 	if meta.Annotations == nil {
@@ -255,13 +301,6 @@ func (s *PolicySyncer) updateMetadata(meta *core.Metadata) {
 	for k, v := range s.WriteSelector {
 		meta.Labels[k] = v
 	}
-}
-
-func svcname(s core.ResourceRef) string {
-	return fmt.Sprintf("%s.%s.svc.cluster.local", s.Name, s.Namespace)
-}
-func principalame(s core.ResourceRef) string {
-	return fmt.Sprintf("cluster.local/ns/%s/sa/%s", s.Namespace, s.Name)
 }
 
 func preserveServiceRoleBinding(original, desired *v1alpha1.ServiceRoleBinding) (bool, error) {
