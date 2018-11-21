@@ -15,8 +15,8 @@ import (
 	istiosecret "github.com/solo-io/supergloo/pkg/api/external/istio/encryption/v1"
 	"github.com/solo-io/supergloo/test/util"
 
-	gloo "github.com/solo-io/supergloo/pkg/api/external/gloo/v1"
 	"github.com/solo-io/solo-kit/pkg/api/v1/clients"
+	gloo "github.com/solo-io/supergloo/pkg/api/external/gloo/v1"
 
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
@@ -94,7 +94,7 @@ var _ = Describe("Istio Install and Encryption E2E", func() {
 	}
 
 	var meshClient v1.MeshClient
-	var	upstreamClient gloo.UpstreamClient
+	var upstreamClient gloo.UpstreamClient
 
 	var secretClient istiosecret.IstioCacertsSecretClient
 	var installSyncer install.InstallSyncer
@@ -202,18 +202,17 @@ var _ = Describe("Istio Install and Encryption E2E", func() {
 			err := cmd.Run()
 			Expect(err).NotTo(HaveOccurred())
 
-			util.WaitForAvailablePods(bookinfons)
 			return bookinfons
 		}
 
-		FIt("Should install istio and enable policy", func() {
+		It("Should install istio and enable policy", func() {
 			snap := getSnapshot(true, nil)
 			err := installSyncer.Sync(context.TODO(), snap)
 			Expect(err).NotTo(HaveOccurred())
-			util.WaitForAvailablePods(installNamespace)
+			util.WaitForAvailablePodsWithTimeout(installNamespace, "300s")
 
 			deployBookInfo()
-			util.WaitForAvailablePods(bookinfons)
+			util.WaitForAvailablePodsWithTimeout(bookinfons, "500s")
 
 			// start discovery
 			cmd := exec.Command(PathToUds, "-udsonly")
@@ -249,7 +248,7 @@ var _ = Describe("Istio Install and Encryption E2E", func() {
 			syncSnapshot := getTranslatorSnapshot(mesh, nil)
 			ups, err := upstreamClient.List("gloo-system", clients.ListOpts{})
 			Expect(err).NotTo(HaveOccurred())
-			syncSnapshot.Upstreams =  gloo.UpstreamsByNamespace{
+			syncSnapshot.Upstreams = gloo.UpstreamsByNamespace{
 				"gloo-system": ups,
 			}
 
