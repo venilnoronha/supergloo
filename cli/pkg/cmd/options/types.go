@@ -52,6 +52,21 @@ type RoutingRule struct {
 	OverrideExisting bool
 }
 
+// // Route Rule fields
+// Status
+// Metadata
+// TargetMesh
+// Sources
+// Destinations
+// RequestMatchers
+// TrafficShifting
+// FaultInjection
+// Timeout
+// Retries
+// CorsPolicy
+// Mirror
+// HeaderManipulaition
+
 type Secret struct {
 	RootCa     string
 	PrivateKey string
@@ -68,6 +83,11 @@ type Create struct {
 // OptionsCache holds resources that multiple commands need
 // It should be initialized on start
 type OptionsCache struct {
-	Namespaces []string
-	KubeClient *kubernetes.Clientset
+	Namespaces  []string
+	KubeClient  *kubernetes.Clientset
+	NsResources map[string]NsResource
+}
+
+type NsResource struct {
+	Meshes []string
 }
