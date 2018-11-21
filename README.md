@@ -1,14 +1,14 @@
 
 <h1 align="center">
-    <img src="docs/SuperGloo.png" alt="SuperGloo" width="372" height="242">
+    <img src="doc/docs/img/SuperGloo.png" alt="SuperGloo" width="372" height="242">
   <br>
   The Service Mesh Orchestration Platform
 </h1>
 
 SuperGloo, an open-source project to manage and orchestrate service meshes at scale. SuperGloo is an opinionated abstraction layer that will simplify the installation, management, and operation of your service mesh, whether you use (or plan to use) a single mesh or multiple mesh technologies, on-site, in the cloud, or on any topology that best fits you. 
 
-[**Installation**](docs/installation.md) &nbsp; |
-&nbsp; [**Developers**](docs/developers.md) &nbsp; |
+[**Installation**](doc/docs/installation.md) &nbsp; |
+&nbsp; [**Developers**](doc/docs/developers.md) &nbsp; |
 &nbsp; [**Documentation**](https://supergloo.solo.io) &nbsp; |
 &nbsp; [**Blog**](https://medium.com/solo-io/https-medium-com-solo-io-supergloo-ff2aae1fb96f) &nbsp; |
 &nbsp; [**Slack**](https://slack.solo.io) &nbsp; |
