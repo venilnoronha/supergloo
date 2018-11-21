@@ -83,13 +83,7 @@ func createRoutingRule(routeName string, opts *options.Options) error {
 		}
 	}
 
-	if rrOpts.Namespace == "" {
-		// namespace, err := common.ChooseNamespace(opts, "Select a mesh namespace")
-		// if err != nil {
-		// 	return fmt.Errorf("input error")
-		// }
-		// rrOpts.Namespace = namespace
-	} else {
+	if rrOpts.Namespace != "" {
 		if !common.Contains(opts.Cache.Namespaces, rrOpts.Namespace) {
 			return fmt.Errorf("Please specify a valid mesh namespace. Namespace %v not found", rrOpts.Namespace)
 		}
@@ -99,6 +93,7 @@ func createRoutingRule(routeName string, opts *options.Options) error {
 	}
 
 	if rrOpts.Mesh == "" {
+		// Q(mitchdraft) do we want to prefilter this by namespace if they have chosen one?
 		mesh, namespace, err := meshutil.ChooseMesh(opts.Cache.NsResources)
 		if err != nil {
 			return fmt.Errorf("input error")
@@ -108,22 +103,6 @@ func createRoutingRule(routeName string, opts *options.Options) error {
 	} else {
 		if !common.Contains(opts.Cache.NsResources[rrOpts.Namespace].Meshes, rrOpts.Mesh) {
 			return fmt.Errorf("Please specify a valid mesh name. Mesh %v not found in namespace %v not found", rrOpts.Mesh, rrOpts.Namespace)
-		}
-	}
-
-	meshClient, err := common.GetMeshClient()
-	if err != nil {
-		return err
-	}
-	mesh, err := (*meshClient).Read(constants.SuperglooNamespace, rrOpts.Mesh, clients.ReadOpts{})
-	if err != nil {
-		return err
-	}
-
-	// Validate namespace
-	if rrOpts.Namespace != "" && rrOpts.Namespace != "default" {
-		if common.Contains(opts.Cache.Namespaces, rrOpts.Namespace) {
-			return fmt.Errorf("Namespace %v does not exist.\n", rrOpts.Namespace)
 		}
 	}
 
