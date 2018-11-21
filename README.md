@@ -14,6 +14,8 @@ SuperGloo, an open-source project to manage and orchestrate service meshes at sc
 &nbsp; [**Slack**](https://slack.solo.io) &nbsp; |
 &nbsp; [**Twitter**](https://twitter.com/soloio_inc)
 
+<center><img src="docs/architecture.svg" alt="SuperGloo Architecture" width="906"></center>
+
 ## Summary
 
 - [**Why SuperGloo?**](#why-supergloo)
@@ -22,7 +24,7 @@ SuperGloo, an open-source project to manage and orchestrate service meshes at sc
 - [**Roadmap**](#Roadmap)
 - [**Vision**](#vision)
 
-
+  
 ## Why SuperGloo?
 
 **SuperGloo helps users kick off their service mesh experience.** Users who contemplate working with service mesh can be deterred by the many configuration choices they have to make. SuperGloo solves this problem by providing an opinionated API that automates the installation process, obviating the need for writing and deploying complicated yaml files. 
@@ -80,7 +82,7 @@ This means that products that work on top of a service mesh can be completely ag
             <td align=center>✔</td>
         </tr>
         <tr>
-            <td colspan=2><B>Discovery</B></td>
+            <td colspan=2><B>Discovery</B></td>arch
             <td align=center>🚧</td>
             <td align=center>🚧</td>
             <td align=center>🚧</td>
