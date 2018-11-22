@@ -1,4 +1,4 @@
-package utils_test
+package shared_test
 
 import (
 	"testing"
@@ -7,7 +7,7 @@ import (
 	. "github.com/onsi/gomega"
 )
 
-func TestUtils(t *testing.T) {
+func TestShared(t *testing.T) {
 	RegisterFailHandler(Fail)
-	RunSpecs(t, "Utils Suite")
+	RunSpecs(t, "Shared Suite")
 }

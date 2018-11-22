@@ -1,15 +1,14 @@
-package utils
+package shared
 
 import (
-	"context"
+	"github.com/ghodss/yaml"
 	"github.com/pkg/errors"
-	"github.com/solo-io/solo-kit/pkg/utils/contextutils"
-	"gopkg.in/yaml.v2"
 	"k8s.io/api/admissionregistration/v1beta1"
-	apps "k8s.io/api/apps/v1beta2"
+	appsv1beta2 "k8s.io/api/apps/v1beta2"
 	autoscaling "k8s.io/api/autoscaling/v1"
 	batch "k8s.io/api/batch/v1"
 	core "k8s.io/api/core/v1"
+	appsv1beta1 "k8s.io/api/extensions/v1beta1"
 	rbac "k8s.io/api/rbac/v1"
 	apiextensions "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1beta1"
 	apiexts "k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset"
@@ -22,11 +21,11 @@ import (
 type UntypedKubeObject map[string]interface{}
 type KubeObjectList []runtime.Object
 
-func ParseKubeManifest(ctx context.Context, manifest string) (KubeObjectList, error) {
+func ParseKubeManifest(manifest string) (KubeObjectList, error) {
 	snippets := strings.Split(manifest, "---")
 	var objs KubeObjectList
 	for _, objectYaml := range snippets {
-		parsedObjs, err:= parseobjectYaml(ctx, objectYaml)
+		parsedObjs, err := parseobjectYaml(objectYaml)
 		if err != nil {
 			return nil, err
 		}
@@ -38,13 +37,10 @@ func ParseKubeManifest(ctx context.Context, manifest string) (KubeObjectList, er
 	return objs, nil
 }
 
-func parseobjectYaml(ctx context.Context, objectYaml string) (KubeObjectList, error) {
+func parseobjectYaml(objectYaml string) (KubeObjectList, error) {
 	obj, err := convertYamlToResource(objectYaml)
 	if err != nil {
-		// TODO (ilackarms): handle this error somewhere
-		// currently we cant error here because of CRDs (and anything else we might not support)
-		contextutils.LoggerFrom(ctx).Errorf("%v", errors.Wrapf(err, "parsing resource from yaml: %v", objectYaml))
-		return nil, nil
+		return nil, errors.Wrapf(err, "unsupported object type: %v", objectYaml)
 	}
 
 	return obj, nil
@@ -59,44 +55,47 @@ func convertYamlToResource(objectYaml string) (KubeObjectList, error) {
 	if untyped == nil {
 		return nil, nil
 	}
-	kindVal, ok := untyped["kind"]
-	if !ok {
-		return nil, errors.Errorf("%v missing key 'kind'", untyped)
+
+	// need to be done manually as the go structs are embedded
+	var typeMeta metav1.TypeMeta
+	if err := yaml.Unmarshal([]byte(objectYaml), &typeMeta); err != nil {
+		return nil, errors.Wrapf(err, "parsing raw yaml as %+v", typeMeta)
 	}
-	kind, ok := kindVal.(string)
-	if !ok {
-		return nil, errors.Errorf("%v unexpected value for 'kind' in %v", kindVal, untyped)
-	}
-	if kind == "List" {
-		return convertUntypedList(untyped)
-	}
+
+	kind := typeMeta.Kind
 
 	var obj runtime.Object
 	switch kind {
+	case "List":
+		return convertUntypedList(untyped)
 	case "Namespace":
-		obj = &core.Namespace{}
+		obj = &core.Namespace{TypeMeta: typeMeta}
 	case "ServiceAccount":
-		obj = &core.ServiceAccount{}
+		obj = &core.ServiceAccount{TypeMeta: typeMeta}
 	case "ClusterRole":
-		obj = &rbac.ClusterRole{}
+		obj = &rbac.ClusterRole{TypeMeta: typeMeta}
 	case "ClusterRoleBinding":
-		obj = &rbac.ClusterRoleBinding{}
+		obj = &rbac.ClusterRoleBinding{TypeMeta: typeMeta}
 	case "Job":
-		obj = &batch.Job{}
+		obj = &batch.Job{TypeMeta: typeMeta}
 	case "ConfigMap":
-		obj = &core.ConfigMap{}
+		obj = &core.ConfigMap{TypeMeta: typeMeta}
 	case "Service":
-		obj = &core.Service{}
+		obj = &core.Service{TypeMeta: typeMeta}
 	case "Deployment":
-		obj = &apps.Deployment{}
+		obj = &appsv1beta2.Deployment{TypeMeta: typeMeta}
 	case "DaemonSet":
-		obj = &apps.DaemonSet{}
+		if typeMeta.APIVersion == "extensions/v1beta1" {
+			obj = &appsv1beta1.DaemonSet{TypeMeta: typeMeta}
+		} else {
+			obj = &appsv1beta2.DaemonSet{TypeMeta: typeMeta}
+		}
 	case "CustomResourceDefinition":
-		obj = &apiextensions.CustomResourceDefinition{}
+		obj = &apiextensions.CustomResourceDefinition{TypeMeta: typeMeta}
 	case "MutatingWebhookConfiguration":
-		obj = &v1beta1.MutatingWebhookConfiguration{}
+		obj = &v1beta1.MutatingWebhookConfiguration{TypeMeta: typeMeta}
 	case "HorizontalPodAutoscaler":
-		obj = &autoscaling.HorizontalPodAutoscaler{}
+		obj = &autoscaling.HorizontalPodAutoscaler{TypeMeta: typeMeta}
 	default:
 		return nil, errors.Errorf("unsupported kind %v", kind)
 	}
@@ -131,14 +130,14 @@ func convertUntypedList(untyped UntypedKubeObject) (KubeObjectList, error) {
 	return returnList, nil
 }
 
-type infraSyncer struct {
+type kubeInterface struct {
 	kube kubernetes.Interface
 	exts apiexts.Interface
 }
 
-func (s *infraSyncer) create(obj runtime.Object) error {
-	kube := s.kube
-	exts := s.exts
+func (k *kubeInterface) create(obj runtime.Object) error {
+	kube := k.kube
+	exts := k.exts
 	switch obj := obj.(type) {
 	case *core.Namespace:
 		_, err := kube.CoreV1().Namespaces().Create(obj)
@@ -161,10 +160,10 @@ func (s *infraSyncer) create(obj runtime.Object) error {
 	case *batch.Job:
 		_, err := kube.BatchV1().Jobs(obj.Namespace).Create(obj)
 		return err
-	case *apps.Deployment:
+	case *appsv1beta2.Deployment:
 		_, err := kube.AppsV1beta2().Deployments(obj.Namespace).Create(obj)
 		return err
-	case *apps.DaemonSet:
+	case *appsv1beta2.DaemonSet:
 		_, err := kube.AppsV1beta2().DaemonSets(obj.Namespace).Create(obj)
 		return err
 	case *apiextensions.CustomResourceDefinition:
@@ -181,9 +180,9 @@ func (s *infraSyncer) create(obj runtime.Object) error {
 }
 
 // resource version should be ignored / not matter
-func (s *infraSyncer) update(obj runtime.Object) error {
-	kube := s.kube
-	exts := s.exts
+func (k *kubeInterface) update(obj runtime.Object) error {
+	kube := k.kube
+	exts := k.exts
 	switch obj := obj.(type) {
 	case *core.Namespace:
 		client := kube.CoreV1().Namespaces()
@@ -248,7 +247,7 @@ func (s *infraSyncer) update(obj runtime.Object) error {
 		obj.ResourceVersion = obj2.ResourceVersion
 		_, err = client.Update(obj)
 		return err
-	case *apps.Deployment:
+	case *appsv1beta2.Deployment:
 		client := kube.AppsV1beta2().Deployments(obj.Namespace)
 		obj2, err := client.Get(obj.Name, metav1.GetOptions{})
 		if err != nil {
@@ -257,7 +256,7 @@ func (s *infraSyncer) update(obj runtime.Object) error {
 		obj.ResourceVersion = obj2.ResourceVersion
 		_, err = client.Update(obj)
 		return err
-	case *apps.DaemonSet:
+	case *appsv1beta2.DaemonSet:
 		client := kube.AppsV1beta2().DaemonSets(obj.Namespace)
 		obj2, err := client.Get(obj.Name, metav1.GetOptions{})
 		if err != nil {
@@ -298,9 +297,9 @@ func (s *infraSyncer) update(obj runtime.Object) error {
 }
 
 // this can be just an empty object of the correct type w/ the name and namespace (if applicable) set
-func (s *infraSyncer) delete(obj runtime.Object) error {
-	kube := s.kube
-	exts := s.exts
+func (k *kubeInterface) delete(obj runtime.Object) error {
+	kube := k.kube
+	exts := k.exts
 	switch obj := obj.(type) {
 	case *core.Namespace:
 		return kube.CoreV1().Namespaces().Delete(obj.Name, nil)
@@ -316,9 +315,9 @@ func (s *infraSyncer) delete(obj runtime.Object) error {
 		return kube.RbacV1().ClusterRoleBindings().Delete(obj.Name, nil)
 	case *batch.Job:
 		return kube.BatchV1().Jobs(obj.Namespace).Delete(obj.Name, nil)
-	case *apps.Deployment:
+	case *appsv1beta2.Deployment:
 		return kube.AppsV1beta2().Deployments(obj.Namespace).Delete(obj.Name, nil)
-	case *apps.DaemonSet:
+	case *appsv1beta2.DaemonSet:
 		return kube.AppsV1beta2().DaemonSets(obj.Namespace).Delete(obj.Name, nil)
 	case *apiextensions.CustomResourceDefinition:
 		return exts.ApiextensionsV1beta1().CustomResourceDefinitions().Delete(obj.Name, nil)
