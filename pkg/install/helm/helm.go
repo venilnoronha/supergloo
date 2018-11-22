@@ -4,10 +4,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/solo-io/solo-kit/pkg/utils/contextutils"
+	"net"
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/solo-io/solo-kit/pkg/utils/contextutils"
 
 	"k8s.io/helm/pkg/downloader"
 	"k8s.io/helm/pkg/repo"
@@ -23,6 +25,17 @@ import (
 	"k8s.io/helm/pkg/helm/portforwarder"
 	"k8s.io/helm/pkg/kube"
 )
+
+func setupTillerHost(ctx context.Context) {
+	tiller := "tiller-deploy.kube-system.svc.cluster.local"
+	_, err := net.LookupIP(tiller)
+	if err == nil {
+		contextutils.LoggerFrom(ctx).Infof("Setting tiller host to in-cluster host.")
+		Settings.TillerHost = tiller + ":44134"
+	} else {
+		contextutils.LoggerFrom(ctx).Infof("Can't resolve tiller in the cluster")
+	}
+}
 
 // Create a tunnel to tiller, set up a helm client, and ping it to ensure the connection is live
 // Consumers are expected to call Teardown to ensure the tunnel gets closed
@@ -75,6 +88,10 @@ func getKubeClient(context string, kubeconfig string) (*rest.Config, kubernetes.
 func setupConnection(ctx context.Context) error {
 	var flagSet pflag.FlagSet
 	Settings.AddFlags(&flagSet)
+
+	// Test if we are in the cluster and set tiller host accordingly
+	setupTillerHost(ctx)
+
 	if Settings.TillerHost == "" {
 		config, client, err := getKubeClient(Settings.KubeContext, Settings.KubeConfig)
 		if err != nil {
@@ -97,12 +114,12 @@ func setupConnection(ctx context.Context) error {
 	return nil
 }
 
-func LocateChartPathDefault(name string) (string, error) {
-	return locateChartPath("", "", "", name, "", false, "", "", "", "")
+func LocateChartPathDefault(ctx context.Context, name string) (string, error) {
+	return locateChartPath(ctx, "", "", "", name, "", false, "", "", "", "")
 }
 
-func LocateChartRepoReleaseDefault(repoUrl string, release string) (string, error) {
-	return locateChartPath(repoUrl, "", "", release, "", false, "", "", "", "")
+func LocateChartRepoReleaseDefault(ctx context.Context, repoUrl string, release string) (string, error) {
+	return locateChartPath(ctx, repoUrl, "", "", release, "", false, "", "", "", "")
 }
 
 // locateChartPath looks for a chart directory in known places, and returns either the full path or an error.
@@ -116,7 +133,7 @@ func LocateChartRepoReleaseDefault(repoUrl string, release string) (string, erro
 // - URL
 //
 // If 'verify' is true, this will attempt to also verify the chart.
-func locateChartPath(repoURL, username, password, name, version string, verify bool, keyring,
+func locateChartPath(ctx context.Context, repoURL, username, password, name, version string, verify bool, keyring,
 	certFile, keyFile, caFile string) (string, error) {
 	name = strings.TrimSpace(name)
 	version = strings.TrimSpace(version)
@@ -179,6 +196,8 @@ func locateChartPath(repoURL, username, password, name, version string, verify b
 	} else if Settings.Debug {
 		return filename, err
 	}
+
+	contextutils.LoggerFrom(ctx).Warnw("Failed to download chart", "error", err, "chart", name)
 
 	return filename, fmt.Errorf("failed to download %q (hint: running `helm repo update` may help)", name)
 }

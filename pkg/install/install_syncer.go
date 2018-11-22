@@ -222,7 +222,7 @@ func helmInstallChart(ctx context.Context, chartPath string, releaseName string,
 		return "", err
 	}
 
-	installPath, err := helm.LocateChartRepoReleaseDefault("", chartPath)
+	installPath, err := helm.LocateChartRepoReleaseDefault(ctx, "", chartPath)
 	if err != nil {
 		return "", err
 	}

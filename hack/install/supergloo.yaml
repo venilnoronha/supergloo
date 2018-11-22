@@ -42,7 +42,7 @@ spec:
       containers:
       - name: supergloo
         image: soloio/supergloo:dev
-        imagePullPolicy: IfNotPresent
+        imagePullPolicy: Always
 ---
 ### Deployment
 apiVersion: extensions/v1beta1
