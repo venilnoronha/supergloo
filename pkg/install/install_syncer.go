@@ -5,6 +5,7 @@ import (
 
 	"github.com/solo-io/solo-kit/pkg/utils/contextutils"
 
+	apiexts "k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset"
 	"github.com/solo-io/supergloo/pkg/install/linkerd2"
 
 	"github.com/solo-io/supergloo/pkg/install/istio"
@@ -31,6 +32,7 @@ type InstallSyncer struct {
 	Kube           *kubernetes.Clientset
 	MeshClient     v1.MeshClient
 	SecurityClient *security.Clientset
+	ApiExts        apiexts.Interface
 }
 
 type MeshInstaller interface {
@@ -61,6 +63,7 @@ func (syncer *InstallSyncer) syncInstall(ctx context.Context, install *v1.Instal
 		meshInstaller = &consul.ConsulInstaller{}
 	case *v1.Install_Istio:
 		meshInstaller = &istio.IstioInstaller{
+			ApiExts: syncer.ApiExts,
 			SecurityClient: syncer.SecurityClient,
 		}
 	case *v1.Install_Linkerd2:

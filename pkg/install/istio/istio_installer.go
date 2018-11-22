@@ -1,14 +1,18 @@
 package istio
 
 import (
+	"github.com/solo-io/solo-kit/pkg/errors"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"strconv"
 	"strings"
 
-	"github.com/solo-io/supergloo/pkg/api/v1"
-	"k8s.io/client-go/kubernetes"
-
 	security "github.com/openshift/client-go/security/clientset/versioned"
+	"github.com/solo-io/supergloo/pkg/api/v1"
+	"k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1beta1"
+	apiexts "k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset"
 	kubemeta "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/kubernetes"
 )
 
 const (
@@ -17,6 +21,7 @@ const (
 )
 
 type IstioInstaller struct {
+	ApiExts        apiexts.Interface
 	SecurityClient *security.Clientset
 }
 

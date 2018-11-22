@@ -2,10 +2,14 @@ package setup
 
 import (
 	"context"
+	"github.com/solo-io/solo-kit/pkg/api/v1/reporter"
+	"github.com/solo-io/solo-kit/pkg/errors"
+	"github.com/solo-io/supergloo/pkg/api/external/istio/networking/v1alpha3"
 	"time"
 
 	"github.com/solo-io/supergloo/pkg/install"
 
+	apiexts "k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset"
 	"github.com/solo-io/solo-kit/pkg/api/v1/clients"
 	"github.com/solo-io/solo-kit/pkg/api/v1/clients/factory"
 	"github.com/solo-io/solo-kit/pkg/api/v1/clients/kube"
@@ -40,29 +44,23 @@ func Main() error {
 		return err
 	}
 
-	//destinationRuleClient, err := v1alpha3.NewDestinationRuleClient(&factory.KubeResourceClientFactory{
-	//	Crd:         v1alpha3.DestinationRuleCrd,
-	//	Cfg:         restConfig,
-	//	SharedCache: kubeCache,
-	//})
-	//if err != nil {
-	//	return err
-	//}
-	//if err := destinationRuleClient.Register(); err != nil {
-	//	return err
-	//}
+	destinationRuleClient, err := v1alpha3.NewDestinationRuleClient(&factory.KubeResourceClientFactory{
+		Crd:         v1alpha3.DestinationRuleCrd,
+		Cfg:         restConfig,
+		SharedCache: kubeCache,
+	})
+	if err != nil {
+		return err
+	}
 
-	//virtualServiceClient, err := v1alpha3.NewVirtualServiceClient(&factory.KubeResourceClientFactory{
-	//	Crd:         v1alpha3.VirtualServiceCrd,
-	//	Cfg:         restConfig,
-	//	SharedCache: kubeCache,
-	//})
-	//if err != nil {
-	//	return err
-	//}
-	//if err := virtualServiceClient.Register(); err != nil {
-	//	return err
-	//}
+	virtualServiceClient, err := v1alpha3.NewVirtualServiceClient(&factory.KubeResourceClientFactory{
+		Crd:         v1alpha3.VirtualServiceCrd,
+		Cfg:         restConfig,
+		SharedCache: kubeCache,
+	})
+	if err != nil {
+		return err
+	}
 
 	prometheusClient, err := prometheusv1.NewConfigClient(&factory.KubeConfigMapClientFactory{
 		Clientset: kubeClient,
@@ -136,16 +134,16 @@ func Main() error {
 
 	translatorEmitter := v1.NewTranslatorEmitter(meshClient, routingRuleClient, upstreamClient, secretClient)
 
-	//rpt := reporter.NewReporter("supergloo", meshClient.BaseClient())
+	rpt := reporter.NewReporter("supergloo", meshClient.BaseClient())
 	writeErrs := make(chan error)
 
-	//istioRoutingSyncer := &istio.MeshRoutingSyncer{
-	//	WriteNamespaces:           defaultNamespaces,
-	//	DestinationRuleReconciler: v1alpha3.NewDestinationRuleReconciler(destinationRuleClient),
-	//	VirtualServiceReconciler:  v1alpha3.NewVirtualServiceReconciler(virtualServiceClient),
-	//	Reporter:                  rpt,
-	//	WriteSelector:             map[string]string{"reconciler.solo.io": "supergloo.istio.routing"},
-	//}
+	istioRoutingSyncer := &istio.MeshRoutingSyncer{
+		WriteNamespaces:           defaultNamespaces,
+		DestinationRuleReconciler: v1alpha3.NewDestinationRuleReconciler(destinationRuleClient),
+		VirtualServiceReconciler:  v1alpha3.NewVirtualServiceReconciler(virtualServiceClient),
+		Reporter:                  rpt,
+		WriteSelector:             map[string]string{"reconciler.solo.io": "supergloo.istio.routing"},
+	}
 
 	linkerd2PrometheusSyncer := linkerd2.NewPrometheusSyncer(kubeClient, prometheusClient)
 	istioPrometheusSyncer := istio.NewPrometheusSyncer(kubeClient, prometheusClient)
@@ -158,7 +156,7 @@ func Main() error {
 	}
 
 	translatorSyncers := v1.TranslatorSyncers{
-		// istioRoutingSyncer, //TODO: Routing creates istio CRDs, causing istio installation to fail. We need to figure out a solution, removing this syncer as a short-term fix.
+		istioRoutingSyncer, //TODO: Routing creates istio CRDs, causing istio installation to fail. We need to figure out a solution, removing this syncer as a short-term fix.
 		istioPrometheusSyncer,
 		linkerd2PrometheusSyncer,
 		consulEncryptionSyncer,
@@ -166,7 +164,12 @@ func Main() error {
 		istioEncryptionSyncer,
 	}
 
+	apiExts, err := apiexts.NewForConfig(restConfig)
+	if err != nil {
+		return errors.Wrapf(err, "creating api extensions client")
+	}
 	installSyncer := &install.InstallSyncer{
+		ApiExts:    apiExts,
 		Kube:       kubeClient,
 		MeshClient: meshClient,
 		// TODO: set a security client when we resolve minishift issues
