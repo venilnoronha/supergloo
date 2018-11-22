@@ -21,13 +21,13 @@ Kubernetes environments in the future.
 
 #### 2. Install supergloo cli and supergloo server
 
-`make install-cli supergloo-server`
+`make install-cli`
 
 > When the CLI is first run, it will ensure that Helm is deployed and Supergloo's namespace is initialized.
 
-#### 3. Start the supergloo server locally
+#### 3. Install supergloo in your cluster
 
-`supergloo-server`
+`supergloo init`
 
 > This will stay running and print logs to the console. Open another tab to run the CLI
 

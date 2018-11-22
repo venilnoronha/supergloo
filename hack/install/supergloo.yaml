@@ -3,6 +3,11 @@ apiVersion: v1
 kind: Namespace
 metadata:
   name: supergloo-system
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: gloo-system
 
 
 ---
@@ -18,9 +23,7 @@ subjects:
 - kind: ServiceAccount
   name: default
   namespace: supergloo-system
-
 ---
-
 ### Deployment
 apiVersion: extensions/v1beta1
 kind: Deployment
@@ -31,9 +34,6 @@ metadata:
     gloo: supergloo
 spec:
   replicas: 1
-  selector:
-    matchLabels:
-      gloo: supergloo
   template:
     metadata:
       labels:
@@ -43,3 +43,25 @@ spec:
       - name: supergloo
         image: soloio/supergloo:dev
         imagePullPolicy: IfNotPresent
+---
+### Deployment
+apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  name: discovery
+  namespace: supergloo-system
+  labels:
+    gloo: discovery
+spec:
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        gloo: discovery
+    spec:
+      containers:
+      - name: supergloo
+        image: soloio/discovery:dev
+        imagePullPolicy: IfNotPresent
+        args:
+        - -udsonly
