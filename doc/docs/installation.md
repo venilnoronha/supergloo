@@ -1,6 +1,6 @@
-## Installation
+# Installation
 
-### Dependencies
+# Dependencies
 
 - Go (1.11)
 - VM Driver (tested with VirtualBox, KVM)
@@ -11,29 +11,40 @@
 > For demo purposes, Supergloo is only supported on local Minikube environments. It will likely support other 
 Kubernetes environments in the future. 
 
-### Local Setup
+# Local Setup
 
-#### 1. Create a new Kubernetes environment in Minikube
+## 1. Create a new Kubernetes environment in Minikube
 
 `minikube start --vm-driver=virtualbox --memory=8192 --cpus=4 --kubernetes-version=v1.10.0`
 
 > Service meshes require a lot of resources. Swap out virtualbox for your preferred VM driver.
 
-#### 2. Install supergloo cli and supergloo server
+## 2. Download or Install supergloo cli
 
-`make install-cli`
+## From source
+To install the supergloo cli from source, do:
+```
+mkdir -p $GOPATH/src/github.com/solo-io
+cd $GOPATH/src/github.com/solo-io
+git clone https://github.com/solo-io/supergloo/
+cd supergloo
+make install-cli
+```
+
+## Download a binary
+Go to our [releases page](https://github.com/solo-io/supergloo/releases) and download the latest release. Use the binary that matches your platform. rename it to `superglo` and copy it to somwhere in your path.
 
 > When the CLI is first run, it will ensure that Helm is deployed and Supergloo's namespace is initialized.
 
-#### 3. Install supergloo in your cluster
+## 3. Install supergloo in your cluster
 
 `supergloo init`
 
 > This will stay running and print logs to the console. Open another tab to run the CLI
 
-### Example Workflows
+# Example Workflows
 
-#### Install a new service mesh
+## Install a new service mesh
 
 Supergloo supports Istio, Consul, and Linkerd2. To install them with default configuration, run the following command:
 
