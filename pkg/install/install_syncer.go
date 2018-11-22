@@ -62,10 +62,11 @@ func (syncer *InstallSyncer) syncInstall(ctx context.Context, install *v1.Instal
 	case *v1.Install_Consul:
 		meshInstaller = &consul.ConsulInstaller{}
 	case *v1.Install_Istio:
-		meshInstaller = &istio.IstioInstaller{
-			ApiExts: syncer.ApiExts,
-			SecurityClient: syncer.SecurityClient,
+		i, err := istio.NewIstioInstaller(syncer.ApiExts,syncer.SecurityClient)
+		if err != nil {
+			return errors.Wrapf(err, "initializing istio installer")
 		}
+		meshInstaller = i
 	case *v1.Install_Linkerd2:
 		meshInstaller = &linkerd2.Linkerd2Installer{}
 	default:

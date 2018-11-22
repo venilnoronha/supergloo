@@ -1,15 +1,14 @@
 package istio
 
 import (
-	"github.com/solo-io/solo-kit/pkg/errors"
-	apierrors "k8s.io/apimachinery/pkg/api/errors"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"github.com/pkg/errors"
+	"github.com/solo-io/supergloo/pkg/install/shared"
+	"k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1beta1"
 	"strconv"
 	"strings"
 
 	security "github.com/openshift/client-go/security/clientset/versioned"
 	"github.com/solo-io/supergloo/pkg/api/v1"
-	"k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1beta1"
 	apiexts "k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset"
 	kubemeta "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
@@ -21,8 +20,21 @@ const (
 )
 
 type IstioInstaller struct {
-	ApiExts        apiexts.Interface
-	SecurityClient *security.Clientset
+	apiExts        apiexts.Interface
+	securityClient *security.Clientset
+	crds           []*v1beta1.CustomResourceDefinition
+}
+
+func NewIstioInstaller(ApiExts apiexts.Interface, SecurityClient *security.Clientset) (*IstioInstaller, error) {
+	crds, err := shared.CrdsFromManifest(IstioCrdYaml)
+	if err != nil {
+		return nil, err
+	}
+	return &IstioInstaller{
+		apiExts:        ApiExts,
+		securityClient: SecurityClient,
+		crds:           crds,
+	}, nil
 }
 
 func (c *IstioInstaller) GetDefaultNamespace() string {
@@ -57,6 +69,7 @@ func getOverrides(encryption *v1.Encryption) string {
 var overridesYaml = `
 global.mtls.enabled: @@MTLS_ENABLED@@
 security.selfSigned: @@SELF_SIGNED@@
+global.crds: false
 `
 
 func (c *IstioInstaller) DoPostHelmInstall(install *v1.Install, kube *kubernetes.Clientset, releaseName string) error {
@@ -64,7 +77,11 @@ func (c *IstioInstaller) DoPostHelmInstall(install *v1.Install, kube *kubernetes
 }
 
 func (c *IstioInstaller) DoPreHelmInstall() error {
-	if c.SecurityClient == nil {
+	// create crds if they don't exist. CreateCrds does not error on err type IsAlreadyExists
+	if err := shared.CreateCrds(c.apiExts, c.crds...); err != nil {
+		return errors.Wrapf(err, "creating istio crds")
+	}
+	if c.securityClient == nil {
 		return nil
 	}
 	return c.AddSccToUsers(
@@ -86,13 +103,13 @@ func (c *IstioInstaller) DoPreHelmInstall() error {
 //       to run "oc adm policy add-scc-to-user anyuid -z %s -n istio-system" for each of the user accounts above
 //       maybe the issue is not specifying the namespace?
 func (c *IstioInstaller) AddSccToUsers(users ...string) error {
-	anyuid, err := c.SecurityClient.SecurityV1().SecurityContextConstraints().Get("anyuid", kubemeta.GetOptions{})
+	anyuid, err := c.securityClient.SecurityV1().SecurityContextConstraints().Get("anyuid", kubemeta.GetOptions{})
 	if err != nil {
 		return err
 	}
 	newUsers := append(anyuid.Users, users...)
 	anyuid.Users = newUsers
-	_, err = c.SecurityClient.SecurityV1().SecurityContextConstraints().Update(anyuid)
+	_, err = c.securityClient.SecurityV1().SecurityContextConstraints().Update(anyuid)
 	return err
 }
 
